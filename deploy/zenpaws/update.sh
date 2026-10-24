@@ -3,6 +3,7 @@
 # pulls the latest `zenpaws` branch, migrates, re-applies RLS, rebuilds, restarts.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
+[ -f /etc/openvpm.env ] || { echo "This is not the ZenPaws OpenVPM server (no /etc/openvpm.env). Open Lightsail > zenpaws-vpm > Connect using SSH and run it there."; exit 1; }
 LOG=/var/log/zenpaws-update.log
 exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -u +%FT%TZ) update started"
