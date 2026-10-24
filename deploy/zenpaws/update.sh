@@ -19,22 +19,14 @@ fi
 # Quote the display-name From address so the env file also parses in bash.
 sed -i 's#^EMAIL_FROM=ZenPaws <noreply@zenpawsdvm.com>$#EMAIL_FROM="ZenPaws <noreply@zenpawsdvm.com>"#' /etc/openvpm.env
 
-cat > /etc/caddy/Caddyfile <<'CADDYEOF'
-app.zenpawsdvm.com {
-  encode zstd gzip
-  reverse_proxy 127.0.0.1:3000 {
-    # Next.js builds redirects from its internal address; send visitors to the public one.
-    header_down Location ^https?://(localhost|127\.0\.0\.1):3000 https://app.zenpawsdvm.com
-  }
-}
-CADDYEOF
-caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && systemctl reload caddy
-
 BRANCH="${1:-zenpaws}"
 cd /opt/openvpm
 sudo -u openvpm git fetch --depth 1 origin "$BRANCH"
 sudo -u openvpm git checkout -q -B "$BRANCH" FETCH_HEAD
 echo "now at $(git rev-parse --short HEAD) on $BRANCH"
+
+# Front-end config (public redirects, and the closed-registration rule if set).
+bash /opt/openvpm/deploy/zenpaws/caddy.sh
 
 sudo -u openvpm -H bash -c 'cd /opt/openvpm && pnpm install --frozen-lockfile'
 if [ "$HAVE_DB_ADMIN" = 1 ]; then
