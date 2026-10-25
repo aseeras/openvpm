@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   description:
     "The first modern, open-source, API-first practice management system built for the veterinary community. Beautiful, fast, and free.",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/favicon-48.png", type: "image/png", sizes: "48x48" }],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
   // Lets iPhone/iPad "Add to Home Screen" open the app full screen.
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#5B8270",
+  themeColor: "#12305B",
 };
 
 export default function RootLayout({
