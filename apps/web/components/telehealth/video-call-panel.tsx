@@ -8,32 +8,35 @@ import {
   useRef,
   useState,
 } from "react";
-import Daily, { type DailyCall, type DailyParticipant } from "@daily-co/daily-js";
 import { Loader2, Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
+import { useVideoCall, type VideoConnection } from "@/lib/telehealth/use-video-call";
 
-export type DailyCallPanelHandle = {
+export type VideoCallPanelHandle = {
   /** Stop recording (if any) and upload it. Resolves when done. */
   finishRecording: () => Promise<void>;
 };
 
 type Props = {
-  /** The clinician's join link: https://<domain>.daily.co/<room>?t=<token> */
-  url: string;
+  /** The clinician's signed connection to the visit's channel. */
+  connection: VideoConnection;
   visitId: string;
+  clientName: string;
   /** "active" means the client agreed and the call should be recorded. */
   transcriptStatus: string;
   onUploaded?: () => void;
 };
 
-function MediaTile({ track, muted, mirror, className }: { track?: MediaStreamTrack | null; muted?: boolean; mirror?: boolean; className?: string }) {
+function StreamVideo({ stream, muted, mirror, className }: { stream: MediaStream | null; muted?: boolean; mirror?: boolean; className?: string }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    element.srcObject = track ? new MediaStream([track]) : null;
-  }, [track]);
+    element.srcObject = stream;
+    if (stream) void element.play().catch(() => {});
+  }, [stream]);
   return (
     <video
       ref={ref}
@@ -46,17 +49,6 @@ function MediaTile({ track, muted, mirror, className }: { track?: MediaStreamTra
   );
 }
 
-function RemoteAudio({ track }: { track?: MediaStreamTrack | null }) {
-  const ref = useRef<HTMLAudioElement>(null);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    element.srcObject = track ? new MediaStream([track]) : null;
-    if (track) void element.play().catch(() => {});
-  }, [track]);
-  return <audio ref={ref} autoPlay />;
-}
-
 function preferredAudioType(): string {
   for (const type of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) return type;
@@ -65,52 +57,22 @@ function preferredAudioType(): string {
 }
 
 /**
- * The clinician's side of a video visit, joined with Daily's call object so
- * the page can hear both people. When the client has agreed to a
- * transcript, the call audio is recorded in stereo (clinician left, client
- * right) and uploaded for Amazon Transcribe when the transcript stops.
+ * The clinician's side of a video visit: a direct WebRTC call with the
+ * client. When the client has agreed to a transcript, the call audio is
+ * recorded in stereo (clinician left, client right) and uploaded for Amazon
+ * Transcribe when the transcript stops.
  */
-export const DailyCallPanel = forwardRef<DailyCallPanelHandle, Props>(function DailyCallPanel(
-  { url, visitId, transcriptStatus, onUploaded },
+export const VideoCallPanel = forwardRef<VideoCallPanelHandle, Props>(function VideoCallPanel(
+  { connection, visitId, clientName, transcriptStatus, onUploaded },
   ref,
 ) {
-  const callRef = useRef<DailyCall | null>(null);
-  const [participants, setParticipants] = useState<Record<string, DailyParticipant>>({});
-  const [joining, setJoining] = useState(true);
-  const [failure, setFailure] = useState<string | null>(null);
-
-  useEffect(() => {
-    const link = new URL(url);
-    const token = link.searchParams.get("t") ?? undefined;
-    link.search = "";
-    const call = Daily.createCallObject({ dailyConfig: { avoidEval: true } });
-    callRef.current = call;
-    const refresh = () => setParticipants({ ...call.participants() });
-    const events = [
-      "joined-meeting",
-      "participant-joined",
-      "participant-updated",
-      "participant-left",
-      "track-started",
-      "track-stopped",
-    ] as const;
-    for (const event of events) call.on(event, refresh);
-    call.on("error", (event) => setFailure(event?.errorMsg ?? "The video call stopped."));
-    call
-      .join({ url: link.toString(), token })
-      .then(() => refresh())
-      .catch(() => setFailure("Could not join the video call."))
-      .finally(() => setJoining(false));
-    return () => {
-      callRef.current = null;
-      void call.leave().catch(() => {}).finally(() => call.destroy());
-    };
-  }, [url]);
-
-  const local = participants.local;
-  const remote = Object.values(participants).find((participant) => !participant.local);
-  const localAudio = local?.tracks.audio.persistentTrack ?? null;
-  const remoteAudio = remote?.tracks.audio.persistentTrack ?? null;
+  const rejoin = trpc.telehealth.rejoin.useMutation();
+  const call = useVideoCall({
+    connection,
+    refreshConnection: async () => (await rejoin.mutateAsync({ visitId })).connection,
+  });
+  const localAudio = call.localAudioTrack;
+  const remoteAudio = call.remoteAudioTrack;
 
   // --- Recording for the transcript -------------------------------------
   const recording = useRef<{
@@ -233,56 +195,58 @@ export const DailyCallPanel = forwardRef<DailyCallPanelHandle, Props>(function D
     return () => window.removeEventListener("beforeunload", warn);
   }, [uploading]);
 
-  const audioOn = local?.audio ?? false;
-  const videoOn = local?.video ?? false;
+  const connected = call.state === "connected" && call.remoteStream;
 
   return (
     <div className="relative h-[70vh] min-h-[420px] w-full overflow-hidden rounded-lg border border-border bg-black">
-      {remote ? (
-        <MediaTile track={remote.tracks.video.persistentTrack} className="h-full w-full object-cover" />
+      {connected ? (
+        <StreamVideo stream={call.remoteStream} className="h-full w-full object-cover" />
       ) : (
-        <div className="flex h-full items-center justify-center text-sm text-white/80">
-          {joining ? (
+        <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
+          {call.state === "starting" ? (
             <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Joining the call…
+              <Loader2 className="h-4 w-4 animate-spin" /> Starting your camera…
             </span>
+          ) : call.state === "failed" ? (
+            call.failure
           ) : (
-            failure ?? "Waiting for the client to join…"
+            <span className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Waiting for {clientName} to join…
+            </span>
           )}
         </div>
       )}
-      <RemoteAudio track={remoteAudio} />
-      {local ? (
-        <MediaTile
-          track={local.tracks.video.persistentTrack}
+      {call.localStream ? (
+        <StreamVideo
+          stream={call.localStream}
           muted
           mirror
           className="absolute right-3 top-3 h-28 w-48 rounded-md border border-white/70 bg-neutral-800 object-cover shadow-lg"
         />
       ) : null}
-      {remote ? (
+      {connected ? (
         <span className="absolute bottom-3 left-3 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white">
-          {remote.user_name || "Client"}
+          {clientName}
         </span>
       ) : null}
       <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
         <Button
           type="button"
           size="sm"
-          variant={audioOn ? "secondary" : "destructive"}
-          onClick={() => callRef.current?.setLocalAudio(!audioOn)}
-          aria-label={audioOn ? "Mute microphone" : "Unmute microphone"}
+          variant={call.micOn ? "secondary" : "destructive"}
+          onClick={call.toggleMic}
+          aria-label={call.micOn ? "Mute microphone" : "Unmute microphone"}
         >
-          {audioOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+          {call.micOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
         </Button>
         <Button
           type="button"
           size="sm"
-          variant={videoOn ? "secondary" : "destructive"}
-          onClick={() => callRef.current?.setLocalVideo(!videoOn)}
-          aria-label={videoOn ? "Turn camera off" : "Turn camera on"}
+          variant={call.cameraOn ? "secondary" : "destructive"}
+          onClick={call.toggleCamera}
+          aria-label={call.cameraOn ? "Turn camera off" : "Turn camera on"}
         >
-          {videoOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+          {call.cameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
         </Button>
       </div>
       {uploading ? (

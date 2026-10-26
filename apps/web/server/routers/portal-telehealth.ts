@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   and,
@@ -25,10 +26,10 @@ import { createRouter, portalProcedure } from "../trpc";
 import { rateLimit } from "@/lib/rate-limit";
 import { billingEnforced, hasHostedFullAccess } from "@/lib/billing/plans";
 import {
-  createJoinUrl,
+  channelConnection,
   telehealthVideoConfigured,
   TelehealthVideoUnavailableError,
-} from "@/lib/telehealth/daily";
+} from "@/lib/telehealth/kvs";
 import {
   TRANSCRIPT_DISCLOSURE_VERSION,
   transcriptDisclosure,
@@ -442,7 +443,8 @@ export const portalTelehealthRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       await limit(
         `portal-telehealth-join:${ctx.portalSessionId}`,
-        30,
+        // Signaling links are short-lived, so a long call refreshes a few times.
+        60,
         60 * 60 * 1000,
       );
       const client = await sessionClient(ctx);
@@ -461,19 +463,20 @@ export const portalTelehealthRouter = createRouter({
           ),
         )
         .limit(1);
-      if (!visit || visit.status !== "in_call" || !visit.roomName) {
+      if (!visit || visit.status !== "in_call" || !visit.roomName?.startsWith("arn:")) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "The veterinarian hasn't started this visit yet.",
         });
       }
       try {
-        const url = await createJoinUrl({
-          roomName: visit.roomName,
-          userName: `${client.firstName} ${client.lastName}`.trim(),
-          isClinician: false,
+        // A fresh viewer id per join, so a reconnect replaces the old one.
+        const connection = await channelConnection({
+          channelArn: visit.roomName,
+          role: "VIEWER",
+          clientId: `client-${randomBytes(9).toString("hex")}`,
         });
-        return { url };
+        return { connection };
       } catch (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",

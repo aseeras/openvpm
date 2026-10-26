@@ -1,18 +1,31 @@
-// Video visits embed the clinic's own Daily (daily.co) room. Only that exact
-// origin may be framed or use the camera and microphone, and only when
-// DAILY_DOMAIN is configured (it must be set before the app is built). The
-// clinician's visit page joins with Daily's script instead of a frame, which
-// needs Daily's call bundle and signalling/media hosts.
-const dailyDomain = (process.env.DAILY_DOMAIN || "").trim().toLowerCase();
-const videoOrigin = /^[a-z0-9-]{1,63}$/.test(dailyDomain)
-  ? `https://${dailyDomain}.daily.co`
-  : null;
-
-const dailyScriptHosts = videoOrigin
-  ? "https://*.daily.co https://*.dailywebrtc.com https://*.dailywebrtc.net"
-  : null;
-const dailyConnectHosts = videoOrigin
-  ? `${dailyScriptHosts} wss://*.daily.co wss://*.dailywebrtc.com wss://*.dailywebrtc.net`
+// Video visits are direct WebRTC calls between browsers. The only extra host
+// the page talks to is the clinic's Amazon Kinesis Video Streams signaling
+// endpoint in its own region; media flows peer to peer (or through Amazon's
+// TURN relay), which the content security policy does not govern. These
+// values are read when the app is built, so rebuild after changing them.
+function env(name) {
+  return (process.env[name] || "").trim();
+}
+const videoRegion =
+  env("TELEHEALTH_VIDEO") === "aws_kvs"
+    ? env("TELEHEALTH_VIDEO_REGION") ||
+      env("VISIT_RECORDING_TRANSCRIBE_REGION") ||
+      env("S3_REGION")
+    : "";
+const videoEnabled = /^[a-z0-9-]{4,32}$/.test(videoRegion);
+// A local stand-in for the signaling service, used only by tests.
+const videoTestOrigin = (() => {
+  try {
+    const url = new URL(env("KVS_ENDPOINT"));
+    return `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`;
+  } catch {
+    return null;
+  }
+})();
+const videoConnectHosts = videoEnabled
+  ? [`wss://*.kinesisvideo.${videoRegion}.amazonaws.com`, videoTestOrigin]
+      .filter(Boolean)
+      .join(" ")
   : null;
 
 const contentSecurityPolicy = [
@@ -28,18 +41,16 @@ const contentSecurityPolicy = [
     "script-src 'self' 'unsafe-inline'",
     process.env.NODE_ENV === "development" ? "'unsafe-eval'" : null,
     "https://va.vercel-scripts.com",
-    dailyScriptHosts,
   ]
     .filter(Boolean)
     .join(" "),
   [
     "connect-src 'self' https://app.openvpm.com https://vitals.vercel-insights.com https://va.vercel-scripts.com",
-    dailyConnectHosts,
+    videoConnectHosts,
   ]
     .filter(Boolean)
     .join(" "),
   "worker-src 'self' blob:",
-  videoOrigin ? `frame-src 'self' ${videoOrigin}` : null,
   process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : null,
 ]
   .filter(Boolean)
@@ -71,12 +82,13 @@ const securityHeaders = [
     value: "max-age=63072000; includeSubDomains; preload",
   },
   {
-    // The house-call visit recorder uses this origin's own microphone (after
-    // the client consents); embedded third-party frames stay blocked.
+    // The house-call visit recorder and video visits use this origin's own
+    // camera and microphone (after the person allows it); embedded
+    // third-party frames stay blocked.
     key: "Permissions-Policy",
     value: [
-      videoOrigin ? `camera=(self "${videoOrigin}")` : "camera=()",
-      videoOrigin ? `microphone=(self "${videoOrigin}")` : "microphone=(self)",
+      videoEnabled ? "camera=(self)" : "camera=()",
+      "microphone=(self)",
       "geolocation=()",
       "payment=()",
       "usb=()",

@@ -4,7 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"],
-      "env": ["DAILY_DOMAIN"]
+      "env": ["TELEHEALTH_VIDEO", "TELEHEALTH_VIDEO_REGION", "VISIT_RECORDING_TRANSCRIBE_REGION", "S3_REGION", "KVS_ENDPOINT"]
     },
     "dev": {
       "cache": false,

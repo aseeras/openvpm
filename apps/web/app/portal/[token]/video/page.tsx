@@ -24,6 +24,7 @@ import {
 } from "@/lib/telehealth/visits";
 import { portalLogo, ZP } from "@/lib/portal/zenpaws-theme";
 import { PetAvatar } from "@/components/portal/pet-avatar";
+import { useVideoCall, type VideoConnection } from "@/lib/telehealth/use-video-call";
 
 const WAITING_TIPS = [
   "Find a quiet, well-lit spot",
@@ -56,7 +57,7 @@ export default function PortalVideoVisitPage() {
   const [patientId, setPatientId] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
-  const [callUrl, setCallUrl] = useState<string | null>(null);
+  const [connection, setConnection] = useState<VideoConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissedSummary, setDismissedSummary] = useState<string | null>(() => {
     try {
@@ -88,7 +89,7 @@ export default function PortalVideoVisitPage() {
     onError: (e) => setError(e.message),
   });
   const join = trpc.portalTelehealth.join.useMutation({
-    onSuccess: (result) => setCallUrl(result.url),
+    onSuccess: (result) => setConnection(result.connection),
     onError: (e) => {
       joinRequestedFor.current = null;
       setError(e.message);
@@ -106,7 +107,7 @@ export default function PortalVideoVisitPage() {
     }
     if (!visit || visit.status !== "in_call") {
       joinRequestedFor.current = null;
-      setCallUrl(null);
+      setConnection(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visit?.id, visit?.status]);
@@ -130,7 +131,8 @@ export default function PortalVideoVisitPage() {
   if (visit?.status === "in_call") {
     return (
       <CallScreen
-        url={callUrl}
+        visitId={visit.id}
+        connection={connection}
         joining={join.isPending}
         error={error}
         logoUrl={data.practiceLogoUrl}
@@ -536,7 +538,8 @@ function WaitingRoom({
 }
 
 function CallScreen({
-  url,
+  visitId,
+  connection,
   joining,
   error,
   logoUrl,
@@ -547,7 +550,8 @@ function CallScreen({
   onClose,
   transcript,
 }: {
-  url: string | null;
+  visitId: string;
+  connection: VideoConnection | null;
   joining: boolean;
   error: string | null;
   logoUrl: string | null;
@@ -610,12 +614,12 @@ function CallScreen({
           </button>
         </div>
       ) : null}
-      {url ? (
-        <iframe
-          title="Video visit"
-          src={url}
-          allow="camera; microphone; autoplay; fullscreen; display-capture"
-          className="w-full flex-1 border-0"
+      {connection ? (
+        <LiveCall
+          key={connection.signalingUrl}
+          visitId={visitId}
+          connection={connection}
+          clinicianName={clinicianName ?? "Your veterinarian"}
         />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center text-white">
@@ -673,6 +677,96 @@ function CallScreen({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function StreamVideo({ stream, muted, mirror, className }: { stream: MediaStream | null; muted?: boolean; mirror?: boolean; className?: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.srcObject = stream;
+    if (stream) void element.play().catch(() => {});
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted={muted}
+      className={className}
+      style={mirror ? { transform: "scaleX(-1)" } : undefined}
+    />
+  );
+}
+
+/** The call itself: the veterinarian full screen, yourself in the corner. */
+function LiveCall({
+  visitId,
+  connection,
+  clinicianName,
+}: {
+  visitId: string;
+  connection: VideoConnection;
+  clinicianName: string;
+}) {
+  const refresh = trpc.portalTelehealth.join.useMutation();
+  const call = useVideoCall({
+    connection,
+    refreshConnection: async () => (await refresh.mutateAsync({ visitId })).connection,
+  });
+  const connected = call.state === "connected" && call.remoteStream;
+
+  return (
+    <div className="relative flex-1 overflow-hidden">
+      {connected ? (
+        <StreamVideo stream={call.remoteStream} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-white">
+          {call.state === "failed" ? (
+            <>
+              <AlertTriangle className="h-8 w-8" aria-hidden="true" />
+              <p className="font-bold">{call.failure}</p>
+            </>
+          ) : (
+            <>
+              <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+              <p className="font-bold">
+                {call.state === "starting" ? "Starting your camera…" : `Connecting you with ${clinicianName}…`}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+      {call.localStream ? (
+        <StreamVideo
+          stream={call.localStream}
+          muted
+          mirror
+          className="absolute right-4 top-3 h-40 w-28 rounded-2xl border-2 border-white/80 bg-neutral-800 object-cover shadow-lg"
+        />
+      ) : null}
+      <div className="absolute inset-x-0 bottom-0 flex justify-center gap-4 pt-3" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
+        <button
+          type="button"
+          onClick={call.toggleMic}
+          aria-label={call.micOn ? "Mute microphone" : "Unmute microphone"}
+          className="flex h-14 w-14 items-center justify-center rounded-full text-white"
+          style={{ backgroundColor: call.micOn ? "rgba(255,255,255,0.2)" : "#E5484D" }}
+        >
+          {call.micOn ? <Mic className="h-6 w-6" aria-hidden="true" /> : <MicOff className="h-6 w-6" aria-hidden="true" />}
+        </button>
+        <button
+          type="button"
+          onClick={call.toggleCamera}
+          aria-label={call.cameraOn ? "Turn camera off" : "Turn camera on"}
+          className="flex h-14 w-14 items-center justify-center rounded-full text-white"
+          style={{ backgroundColor: call.cameraOn ? "rgba(255,255,255,0.2)" : "#E5484D" }}
+        >
+          {call.cameraOn ? <Video className="h-6 w-6" aria-hidden="true" /> : <VideoOff className="h-6 w-6" aria-hidden="true" />}
+        </button>
+      </div>
     </div>
   );
 }

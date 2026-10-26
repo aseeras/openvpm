@@ -17,12 +17,13 @@ import {
   RECOVERY_HOLD_BLOCK_MESSAGE,
 } from "@/lib/recovery-hold";
 import {
-  createJoinUrl,
-  createVisitRoom,
-  deleteVisitRoom,
+  channelConnection,
+  createVisitChannel,
+  deleteVisitChannel,
   telehealthVideoConfigured,
   TelehealthVideoUnavailableError,
-} from "@/lib/telehealth/daily";
+  type VideoConnection,
+} from "@/lib/telehealth/kvs";
 import { TRANSCRIPT_UPLOAD_TIMEOUT_MS } from "@/lib/telehealth/transcript";
 import {
   deleteVisitAudio,
@@ -45,6 +46,11 @@ const CLINICIAN_ROLES = ["admin", "veterinarian"] as const;
 const RECENT_WINDOW_MS = 12 * 60 * 60 * 1000;
 /** Video visits go on the schedule as a short visit, like a recheck. */
 const VISIT_LENGTH_MS = 15 * 60 * 1000;
+
+/** Visits started before the move to Amazon hold another service's room name. */
+function isVideoChannel(value: string | null): value is string {
+  return Boolean(value?.startsWith("arn:"));
+}
 
 type StaffCtx = { db: Database; practiceId: string };
 
@@ -181,15 +187,11 @@ export const telehealthRouter = createRouter({
         });
       }
       await assertExternalSideEffectsAllowed(ctx);
-      let roomName: string;
-      let url: string;
+      let channelArn: string;
+      let connection: VideoConnection;
       try {
-        ({ name: roomName } = await createVisitRoom());
-        url = await createJoinUrl({
-          roomName,
-          userName: ctx.user.name || "Veterinarian",
-          isClinician: true,
-        });
+        ({ channelArn } = await createVisitChannel(visit.id));
+        connection = await channelConnection({ channelArn, role: "MASTER" });
       } catch (error) {
         throw videoError(error);
       }
@@ -214,21 +216,21 @@ export const telehealthRouter = createRouter({
         .set({
           status: "in_call",
           clinicianId: ctx.user.id,
-          videoRoomName: roomName,
+          videoRoomName: channelArn,
           startedAt: now,
           appointmentId: appointment?.id ?? null,
         })
         .where(eq(telehealthVisits.id, visit.id));
-      return { url, appointmentId: appointment?.id ?? null };
+      return { connection, appointmentId: appointment?.id ?? null };
     }),
 
-  /** A fresh link back into a visit that is still in progress. */
+  /** A fresh connection back into a visit that is still in progress. */
   rejoin: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
     .input(z.object({ visitId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
-      if (visit.status !== "in_call" || !visit.videoRoomName) {
+      if (visit.status !== "in_call" || !isVideoChannel(visit.videoRoomName)) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "This visit is not in progress.",
@@ -236,18 +238,17 @@ export const telehealthRouter = createRouter({
       }
       await assertExternalSideEffectsAllowed(ctx);
       try {
-        const url = await createJoinUrl({
-          roomName: visit.videoRoomName,
-          userName: ctx.user.name || "Veterinarian",
-          isClinician: true,
+        const connection = await channelConnection({
+          channelArn: visit.videoRoomName,
+          role: "MASTER",
         });
-        return { url };
+        return { connection };
       } catch (error) {
         throw videoError(error);
       }
     }),
 
-  /** Finish the visit and close the room so nobody can rejoin it. */
+  /** Finish the visit and close its channel so nobody can rejoin it. */
   end: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
     .input(z.object({ visitId: z.string().uuid() }))
@@ -259,9 +260,10 @@ export const telehealthRouter = createRouter({
       let transcriptStatus = visit.transcriptStatus;
       if (transcriptStatus === "active") transcriptStatus = "stopped";
       else if (transcriptStatus === "requested") transcriptStatus = "off";
-      if (visit.videoRoomName) {
-        // Rooms also expire on their own, so a failed delete is not fatal.
-        await deleteVisitRoom(visit.videoRoomName).catch(() => {});
+      if (isVideoChannel(visit.videoRoomName)) {
+        // A leftover channel holds no media and lets no one in without a
+        // freshly signed link, so a failed delete is not fatal.
+        await deleteVisitChannel(visit.videoRoomName).catch(() => {});
       }
       await ctx.db
         .update(telehealthVisits)

@@ -1,21 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { KinesisVideoClient } from "@aws-sdk/client-kinesis-video";
+import { KinesisVideoSignalingClient } from "@aws-sdk/client-kinesis-video-signaling";
 import {
-  createJoinUrl,
-  createVisitRoom,
-  deleteVisitRoom,
+  channelConnection,
+  createVisitChannel,
+  deleteVisitChannel,
+  signSignalingUrl,
   telehealthVideoConfigured,
-} from "../daily";
+} from "../kvs";
 import { telehealthSettings, TELEHEALTH_REASONS } from "../visits";
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
-function stubDaily() {
-  vi.stubEnv("DAILY_API_KEY", "test-key");
-  vi.stubEnv("DAILY_DOMAIN", "clinic");
-  vi.stubEnv("DAILY_API_URL", "");
+const CHANNEL_ARN =
+  "arn:aws:kinesisvideo:us-east-2:111122223333:channel/openvpm-visit-abc/1700000000000";
+
+function stubVideo() {
+  vi.stubEnv("TELEHEALTH_VIDEO", "aws_kvs");
+  vi.stubEnv("TELEHEALTH_VIDEO_REGION", "");
+  vi.stubEnv("VISIT_RECORDING_TRANSCRIBE_REGION", "");
+  vi.stubEnv("S3_REGION", "us-east-2");
+  vi.stubEnv("S3_ACCESS_KEY", "AKIDEXAMPLE");
+  vi.stubEnv("S3_SECRET_KEY", "secret-example");
+  vi.stubEnv("KVS_ENDPOINT", "");
 }
 
 describe("telehealthSettings", () => {
@@ -35,84 +46,98 @@ describe("telehealthSettings", () => {
   });
 });
 
-describe("Daily video rooms", () => {
-  it("is off without both a key and a valid domain", () => {
-    vi.stubEnv("DAILY_API_KEY", "test-key");
-    vi.stubEnv("DAILY_DOMAIN", "not a domain!");
-    expect(telehealthVideoConfigured()).toBe(false);
-    vi.stubEnv("DAILY_DOMAIN", "clinic");
+describe("Amazon video channels", () => {
+  it("is off unless turned on with a region and credentials", () => {
+    stubVideo();
     expect(telehealthVideoConfigured()).toBe(true);
-    vi.stubEnv("DAILY_API_KEY", "");
+    vi.stubEnv("TELEHEALTH_VIDEO", "");
+    expect(telehealthVideoConfigured()).toBe(false);
+    stubVideo();
+    vi.stubEnv("S3_SECRET_KEY", "");
+    expect(telehealthVideoConfigured()).toBe(false);
+    stubVideo();
+    vi.stubEnv("S3_REGION", "not a region!");
     expect(telehealthVideoConfigured()).toBe(false);
   });
 
-  it("creates private, expiring rooms that cannot be recorded", async () => {
-    stubDaily();
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(String(init.body));
-      return new Response(JSON.stringify({ name: body.name }), { status: 200 });
+  it("creates one single-master channel per visit and waits for it", async () => {
+    stubVideo();
+    const sent: Array<{ name: string; input: Record<string, unknown> }> = [];
+    let describes = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(KinesisVideoClient.prototype, "send").mockImplementation(async (command: any) => {
+      sent.push({ name: command.constructor.name, input: command.input });
+      if (command.constructor.name === "CreateSignalingChannelCommand") return { ChannelARN: CHANNEL_ARN };
+      describes += 1;
+      return { ChannelInfo: { ChannelARN: CHANNEL_ARN, ChannelStatus: describes > 1 ? "ACTIVE" : "CREATING" } };
     });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const room = await createVisitRoom();
-    expect(room.name).toMatch(/^visit-[0-9a-f]{24}$/);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("https://api.daily.co/v1/rooms");
-    const body = JSON.parse(String(init.body));
-    expect(body.privacy).toBe("private");
-    expect(body.properties.exp).toBeGreaterThan(Date.now() / 1000);
-    expect(body.properties.eject_at_room_exp).toBe(true);
-    expect(body.properties).not.toHaveProperty("enable_recording");
-    expect((init.headers as Record<string, string>).Authorization).toBe(
-      "Bearer test-key",
-    );
-  });
-
-  it("builds a join link on the clinic's own Daily domain", async () => {
-    stubDaily();
-    const fetchMock = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ token: "abc.def" }), { status: 200 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const url = await createJoinUrl({
-      roomName: "visit-123",
-      userName: "Jane Client",
-      isClinician: false,
+    await expect(createVisitChannel("abc")).resolves.toEqual({ channelArn: CHANNEL_ARN });
+    expect(sent[0]).toMatchObject({
+      name: "CreateSignalingChannelCommand",
+      input: { ChannelName: "openvpm-visit-abc", ChannelType: "SINGLE_MASTER" },
     });
-    expect(url).toBe("https://clinic.daily.co/visit-123?t=abc.def");
-    const body = JSON.parse(
-      String(
-        (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body,
-      ),
-    );
-    expect(body.properties.is_owner).toBe(false);
-    expect(body.properties.room_name).toBe("visit-123");
+    expect(describes).toBe(2);
   });
 
-  it("treats an already-deleted room as closed", async () => {
-    stubDaily();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("", { status: 404 })),
-    );
-    await expect(deleteVisitRoom("visit-123")).resolves.toBeUndefined();
+  it("signs a viewer connection without handing out the secret key", async () => {
+    stubVideo();
+    vi.spyOn(KinesisVideoClient.prototype, "send").mockImplementation(async () => ({
+      ResourceEndpointList: [
+        { Protocol: "WSS", ResourceEndpoint: "wss://v-1234.kinesisvideo.us-east-2.amazonaws.com" },
+        { Protocol: "HTTPS", ResourceEndpoint: "https://r-1234.kinesisvideo.us-east-2.amazonaws.com" },
+      ],
+    }));
+    vi.spyOn(KinesisVideoSignalingClient.prototype, "send").mockImplementation(async () => ({
+      IceServerList: [{ Uris: ["turn:1.2.3.4:443?transport=udp"], Username: "u", Password: "p", Ttl: 300 }],
+    }));
+    const connection = await channelConnection({ channelArn: CHANNEL_ARN, role: "VIEWER", clientId: "client-1" });
+    const url = new URL(connection.signalingUrl);
+    expect(url.protocol).toBe("wss:");
+    expect(url.host).toBe("v-1234.kinesisvideo.us-east-2.amazonaws.com");
+    expect(url.searchParams.get("X-Amz-ChannelARN")).toBe(CHANNEL_ARN);
+    expect(url.searchParams.get("X-Amz-ClientId")).toBe("client-1");
+    expect(url.searchParams.get("X-Amz-Credential")).toMatch(/^AKIDEXAMPLE\/\d{8}\/us-east-2\/kinesisvideo\/aws4_request$/);
+    expect(url.searchParams.get("X-Amz-Signature")).toMatch(/^[0-9a-f]{64}$/);
+    expect(connection.signalingUrl).not.toContain("secret-example");
+    expect(connection.iceServers[0]!.urls[0]).toBe("stun:stun.kinesisvideo.us-east-2.amazonaws.com:443");
+    expect(connection.iceServers[1]).toEqual({ urls: ["turn:1.2.3.4:443?transport=udp"], username: "u", credential: "p" });
   });
 
-  it("surfaces a video service failure", async () => {
-    stubDaily();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("", { status: 500 })),
+  it("matches an independent SigV4 reference signature", async () => {
+    // Reference value computed by hand from the SigV4 spec for these inputs.
+    const url = new URL(
+      await signSignalingUrl({
+        endpoint: "wss://v-1.kinesisvideo.us-east-2.amazonaws.com",
+        channelArn:
+          "arn:aws:kinesisvideo:us-east-2:111122223333:channel/openvpm-visit-abc/1700000000000",
+        clientId: "client-1",
+        region: "us-east-2",
+        credentials: { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "secret-example" },
+        signingDate: new Date("2026-01-02T03:04:05Z"),
+      }),
     );
-    await expect(createVisitRoom()).rejects.toThrow("HTTP 500");
+    expect(url.searchParams.get("X-Amz-Date")).toBe("20260102T030405Z");
+    expect(url.searchParams.get("X-Amz-Expires")).toBe("299");
+    expect(url.searchParams.get("X-Amz-Signature")).toBe(
+      "dae81c0a6f88f1ef208837d69439268916c1bfac05ea5b7fa0aa2abb64d47e81",
+    );
+  });
+
+  it("treats an already-deleted channel as closed", async () => {
+    stubVideo();
+    const { ResourceNotFoundException } = await import("@aws-sdk/client-kinesis-video");
+    vi.spyOn(KinesisVideoClient.prototype, "send").mockImplementation(async () => {
+      throw new ResourceNotFoundException({ message: "gone", $metadata: {} });
+    });
+    await expect(deleteVisitChannel(CHANNEL_ARN)).resolves.toBeUndefined();
   });
 });
 
 describe("security headers for video visits", () => {
-  async function headersWith(domain: string) {
-    vi.stubEnv("DAILY_DOMAIN", domain);
+  async function headersWith(video: string, region: string) {
+    vi.stubEnv("TELEHEALTH_VIDEO", video);
+    vi.stubEnv("TELEHEALTH_VIDEO_REGION", region);
+    vi.stubEnv("KVS_ENDPOINT", "");
     vi.resetModules();
     const mod = await import("../../security-headers.js");
     const byKey = Object.fromEntries(
@@ -123,27 +148,20 @@ describe("security headers for video visits", () => {
     return byKey;
   }
 
-  it("lets only the clinic's Daily origin be framed and use camera and mic", async () => {
-    const headers = await headersWith("clinic");
-    expect(headers["Content-Security-Policy"]).toContain(
-      "frame-src 'self' https://clinic.daily.co",
+  it("allows only the region's signaling endpoint and this site's camera", async () => {
+    const headers = await headersWith("aws_kvs", "us-east-2");
+    expect(headers["Content-Security-Policy"]).toMatch(
+      /connect-src [^;]*wss:\/\/\*\.kinesisvideo\.us-east-2\.amazonaws\.com/,
     );
-    expect(headers["Permissions-Policy"]).toContain(
-      'camera=(self "https://clinic.daily.co")',
-    );
-    expect(headers["Permissions-Policy"]).toContain(
-      'microphone=(self "https://clinic.daily.co")',
-    );
-    // The clinician's page joins with Daily's script (no eval needed).
-    expect(headers["Content-Security-Policy"]).toMatch(/script-src [^;]*https:\/\/\*\.daily\.co/);
-    expect(headers["Content-Security-Policy"]).toMatch(/connect-src [^;]*wss:\/\/\*\.daily\.co/);
+    expect(headers["Content-Security-Policy"]).not.toContain("frame-src");
     expect(headers["Content-Security-Policy"]).not.toContain("'unsafe-eval'");
+    expect(headers["Permissions-Policy"]).toContain("camera=(self)");
+    expect(headers["Permissions-Policy"]).toContain("microphone=(self)");
   });
 
   it("keeps the camera blocked when video visits are not configured", async () => {
-    const headers = await headersWith("");
-    expect(headers["Content-Security-Policy"]).not.toContain("frame-src");
-    expect(headers["Content-Security-Policy"]).not.toContain("daily.co");
+    const headers = await headersWith("", "us-east-2");
+    expect(headers["Content-Security-Policy"]).not.toContain("kinesisvideo");
     expect(headers["Permissions-Policy"]).toContain("camera=()");
   });
 });

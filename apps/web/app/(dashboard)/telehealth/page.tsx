@@ -21,9 +21,10 @@ import {
   FinishedVisitNote,
 } from "@/components/telehealth/transcript-controls";
 import {
-  DailyCallPanel,
-  type DailyCallPanelHandle,
-} from "@/components/telehealth/daily-call-panel";
+  VideoCallPanel,
+  type VideoCallPanelHandle,
+} from "@/components/telehealth/video-call-panel";
+import type { VideoConnection } from "@/lib/telehealth/use-video-call";
 
 const CLINICIAN_ROLES = new Set(["admin", "veterinarian"]);
 
@@ -62,11 +63,11 @@ export default function TelehealthPage() {
   const queue = trpc.telehealth.queue.useQuery(undefined, {
     refetchInterval: TELEHEALTH_POLL_INTERVAL_MS,
   });
-  const [call, setCall] = useState<{ visitId: string; url: string } | null>(
+  const [call, setCall] = useState<{ visitId: string; connection: VideoConnection } | null>(
     null,
   );
 
-  const callPanel = useRef<DailyCallPanelHandle>(null);
+  const callPanel = useRef<VideoCallPanelHandle>(null);
   const [ending, setEnding] = useState(false);
   const refresh = () => utils.telehealth.queue.invalidate();
   const onError = (error: { message: string }) => toast.error(error.message);
@@ -84,14 +85,14 @@ export default function TelehealthPage() {
   });
   const start = trpc.telehealth.start.useMutation({
     onSuccess: async (result, input) => {
-      setCall({ visitId: input.visitId, url: result.url });
+      setCall({ visitId: input.visitId, connection: result.connection });
       await refresh();
     },
     onError,
   });
   const rejoin = trpc.telehealth.rejoin.useMutation({
     onSuccess: (result, input) =>
-      setCall({ visitId: input.visitId, url: result.url }),
+      setCall({ visitId: input.visitId, connection: result.connection }),
     onError,
   });
   const end = trpc.telehealth.end.useMutation({
@@ -225,9 +226,11 @@ export default function TelehealthPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {isClinician ? <CallTranscriptControls visit={activeCall} /> : null}
-            <DailyCallPanel
+            <VideoCallPanel
+              key={call.visitId}
               ref={callPanel}
-              url={call.url}
+              connection={call.connection}
+              clientName={activeCall.clientName}
               visitId={activeCall.id}
               transcriptStatus={activeCall.transcriptStatus}
             />
