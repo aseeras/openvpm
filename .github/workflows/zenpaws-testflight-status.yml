@@ -5,6 +5,12 @@ name: ZenPaws TestFlight status
 
 on:
   workflow_dispatch:
+  # Also runs when the check itself changes, which registers it on this branch.
+  push:
+    branches: [zenpaws]
+    paths:
+      - ".github/workflows/zenpaws-testflight-status.yml"
+      - "mobile/zenpaws-client/scripts/testflight-status.mjs"
 
 jobs:
   status:
