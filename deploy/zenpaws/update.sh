@@ -25,6 +25,12 @@ grep -q '^APPLE_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_SIGN_IN_CLI
 grep -q '^TELEHEALTH_VIDEO=' /etc/openvpm.env || echo 'TELEHEALTH_VIDEO=aws_kvs' >> /etc/openvpm.env
 grep -q '^TELEHEALTH_VIDEO_REGION=.' /etc/openvpm.env || { sed -i '/^TELEHEALTH_VIDEO_REGION=/d' /etc/openvpm.env; echo 'TELEHEALTH_VIDEO_REGION=us-east-2' >> /etc/openvpm.env; }
 sed -i '/^DAILY_API_KEY=/d; /^DAILY_DOMAIN=/d; /^DAILY_API_URL=/d' /etc/openvpm.env
+# Saved-password autofill in the iPhone apps (staff and client), using the
+# Apple Team ID already set up for portal app links.
+TEAM_ID=$(sed -n 's/^APPLE_APP_LINK_APP_IDS=\([A-Z0-9]\{10\}\)\..*/\1/p' /etc/openvpm.env | head -1)
+if [ -n "$TEAM_ID" ] && ! grep -q '^APPLE_WEB_CREDENTIAL_APP_IDS=' /etc/openvpm.env; then
+  echo "APPLE_WEB_CREDENTIAL_APP_IDS=${TEAM_ID}.com.zenpawsdvm.staff,${TEAM_ID}.com.zenpawsdvm.client" >> /etc/openvpm.env
+fi
 
 BRANCH="${1:-zenpaws}"
 cd /opt/openvpm

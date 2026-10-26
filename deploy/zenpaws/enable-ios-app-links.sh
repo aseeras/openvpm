@@ -14,6 +14,13 @@ if grep -q '^APPLE_APP_LINK_APP_IDS=' "$ENV_FILE"; then
 else
   printf 'APPLE_APP_LINK_APP_IDS=%s\n' "$VALUE" >> "$ENV_FILE"
 fi
+# Saved passwords also fill in inside the staff and client apps.
+CREDENTIAL_APPS="${TEAM_ID}.com.zenpawsdvm.staff,${TEAM_ID}.com.zenpawsdvm.client"
+if grep -q '^APPLE_WEB_CREDENTIAL_APP_IDS=' "$ENV_FILE"; then
+  sed -i "s#^APPLE_WEB_CREDENTIAL_APP_IDS=.*#APPLE_WEB_CREDENTIAL_APP_IDS=${CREDENTIAL_APPS}#" "$ENV_FILE"
+else
+  printf 'APPLE_WEB_CREDENTIAL_APP_IDS=%s\n' "$CREDENTIAL_APPS" >> "$ENV_FILE"
+fi
 systemctl restart openvpm
 for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:3000/login && break; sleep 2; done
 curl -fsS http://127.0.0.1:3000/.well-known/apple-app-site-association && echo
