@@ -26,6 +26,10 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ZenPaws uses the camera so the veterinarian can see your pet during a video visit.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ZenPaws uses the microphone so you can talk with the veterinarian during a video visit.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
