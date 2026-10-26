@@ -1,15 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, LogOut, Mail, MessageSquare, Phone, Receipt } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { ZP } from "@/lib/portal/zenpaws-theme";
+import { AppleSignInButton } from "@/components/portal/apple-sign-in-button";
+import { nativeAppleSignInAvailable } from "@/lib/portal/native-apple-sign-in";
 
 /** The client's details, the clinic's contact details, and sign-out. */
 export default function PortalAccountPage() {
   const { data } = trpc.portal.getClient.useQuery({});
   const [signingOut, setSigningOut] = useState(false);
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => setInApp(nativeAppleSignInAvailable()), []);
+  const signIn = trpc.portalSignIn.status.useQuery(undefined, { enabled: Boolean(data) });
+  const unlinkApple = trpc.portalSignIn.unlinkApple.useMutation({
+    onSuccess: () => signIn.refetch(),
+  });
 
   async function signOut() {
     if (signingOut) return;
@@ -34,6 +42,36 @@ export default function PortalAccountPage() {
           <p className="mt-2 text-xs" style={{ color: ZP.muted }}>
             To change these details, send the clinic a message.
           </p>
+        </section>
+      ) : null}
+
+      {/* Turning it on needs the iPhone app; turning it off works anywhere. */}
+      {signIn.data?.appleAvailable && (inApp || signIn.data.appleLinked) ? (
+        <section className="space-y-2.5 rounded-[18px] border bg-white p-4" style={{ borderColor: ZP.border }}>
+          <p className="font-extrabold">Sign in with Apple</p>
+          {signIn.data.appleLinked ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold" style={{ color: ZP.muted }}>
+                On. Next time, sign in with Face ID instead of a link.
+              </p>
+              <button
+                type="button"
+                onClick={() => unlinkApple.mutate()}
+                disabled={unlinkApple.isPending}
+                className="shrink-0 text-sm font-extrabold disabled:opacity-60"
+                style={{ color: ZP.danger }}
+              >
+                Turn off
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm font-semibold" style={{ color: ZP.muted }}>
+                Sign in with Face ID next time, without waiting for a link.
+              </p>
+              <AppleSignInButton mode="link" onLinked={() => signIn.refetch()} />
+            </>
+          )}
         </section>
       ) : null}
 

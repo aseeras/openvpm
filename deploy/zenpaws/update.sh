@@ -5,7 +5,7 @@ set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
 [ -f /etc/openvpm.env ] || { echo "This is not the ZenPaws OpenVPM server (no /etc/openvpm.env). Open Lightsail > zenpaws-vpm > Connect using SSH and run it there."; exit 1; }
 LOG=/var/log/zenpaws-update.log
-exec > >(tee -a "$LOG") 2>&1
+[ -n "${ZP_UPDATER_REEXEC:-}" ] || exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -u +%FT%TZ) update started"
 
 # Database admin settings live only on the server (/root/zenpaws-admin.env, root-only).
@@ -18,12 +18,21 @@ fi
 
 # Quote the display-name From address so the env file also parses in bash.
 sed -i 's#^EMAIL_FROM=ZenPaws <noreply@zenpawsdvm.com>$#EMAIL_FROM="ZenPaws <noreply@zenpawsdvm.com>"#' /etc/openvpm.env
+# Sign in with Apple for the ZenPaws iPhone app (bundle id com.zenpawsdvm.client).
+grep -q '^APPLE_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_SIGN_IN_CLIENT_IDS=com.zenpawsdvm.client' >> /etc/openvpm.env
 
 BRANCH="${1:-zenpaws}"
 cd /opt/openvpm
 sudo -u openvpm git fetch --depth 1 origin "$BRANCH"
 sudo -u openvpm git checkout -q -B "$BRANCH" FETCH_HEAD
 echo "now at $(git rev-parse --short HEAD) on $BRANCH"
+
+# If this update changes the updater itself, finish with the new version.
+if [ -z "${ZP_UPDATER_REEXEC:-}" ] && ! cmp -s deploy/zenpaws/update.sh /usr/local/bin/zenpaws-update; then
+  install -m 700 deploy/zenpaws/update.sh /usr/local/bin/zenpaws-update
+  echo "updater changed; continuing with the new version"
+  ZP_UPDATER_REEXEC=1 exec /usr/local/bin/zenpaws-update "$BRANCH"
+fi
 
 # Front-end config (public redirects, and the closed-registration rule if set).
 bash /opt/openvpm/deploy/zenpaws/caddy.sh

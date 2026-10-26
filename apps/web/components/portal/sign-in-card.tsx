@@ -1,5 +1,6 @@
 import { LockKeyhole, MessageSquare, Phone } from "lucide-react";
 import { ZP } from "@/lib/portal/zenpaws-theme";
+import { AppleSignInButton } from "@/components/portal/apple-sign-in-button";
 import {
   ZENPAWS_PHONE_DISPLAY,
   ZENPAWS_PHONE_SMS,
@@ -25,7 +26,10 @@ export function SignInCard({ reason }: { reason?: string }) {
         client? Tap the sign-in link we texted or emailed you and the app opens
         signed in. Need a new link? Call or text us.
       </p>
-      <div className="mt-5 grid grid-cols-2 gap-2.5">
+      <div className="mt-5">
+        <AppleSignInButton mode="sign_in" />
+      </div>
+      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
         <a
           href={ZENPAWS_PHONE_TEL}
           className="flex min-h-12 items-center justify-center gap-2 rounded-full font-extrabold text-white"

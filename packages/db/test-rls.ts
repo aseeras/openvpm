@@ -129,6 +129,8 @@ const bVisitRecording = randomUUID();
 const mismatchedVisitRecording = randomUUID();
 const aTelehealthVisit = randomUUID();
 const bTelehealthVisit = randomUUID();
+const aSignInIdentity = randomUUID();
+const bSignInIdentity = randomUUID();
 const aFile = randomUUID();
 const bFile = randomUUID();
 const aReplica = randomUUID();
@@ -1029,6 +1031,80 @@ try {
   check(
     "application role cannot delete a video visit",
     telehealthDeleteBlocked,
+  );
+
+  // Portal sign-in links (Sign in with Apple): tenant-scoped, bound to a
+  // client of the same practice, one active link per account, no deletes.
+  await owner`insert into portal_sign_in_identities
+    (id, practice_id, client_id, provider, subject)
+    values (${bSignInIdentity}, ${bId}, ${bClient}, 'apple', 'rls-apple-subject')`;
+  const insertedSignInIdentity = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into portal_sign_in_identities
+      (id, practice_id, client_id, provider, subject)
+      values (${aSignInIdentity}, ${aId}, ${aClient}, 'apple', 'rls-apple-subject')
+      returning id`;
+  });
+  check(
+    "tenant A can link a sign-in to its own client",
+    insertedSignInIdentity.length === 1,
+  );
+
+  const tenantASignInIdentities = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from portal_sign_in_identities
+      where id in (${aSignInIdentity}, ${bSignInIdentity})`;
+  });
+  check(
+    "tenant A sees only its own sign-in links",
+    tenantASignInIdentities.length === 1 &&
+      tenantASignInIdentities[0]!.id === aSignInIdentity,
+  );
+
+  let foreignClientSignInBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_sign_in_identities
+        (practice_id, client_id, provider, subject)
+        values (${aId}, ${bClient}, 'apple', 'rls-other-subject')`;
+    });
+  } catch {
+    foreignClientSignInBlocked = true;
+  }
+  check(
+    "a sign-in link cannot point at another practice's client",
+    foreignClientSignInBlocked,
+  );
+
+  let duplicateSignInBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_sign_in_identities
+        (practice_id, client_id, provider, subject)
+        values (${aId}, ${aClient}, 'apple', 'rls-apple-subject')`;
+    });
+  } catch {
+    duplicateSignInBlocked = true;
+  }
+  check(
+    "an Apple account links to only one client per practice",
+    duplicateSignInBlocked,
+  );
+
+  let signInDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from portal_sign_in_identities where id = ${aSignInIdentity}`;
+    });
+  } catch {
+    signInDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a sign-in link",
+    signInDeleteBlocked,
   );
 
   let correctedReplacementTransactionAllowed = false;
@@ -4999,6 +5075,8 @@ try {
       where id in (${aVisitRecording}, ${bVisitRecording}, ${mismatchedVisitRecording})`;
     await cleanup`delete from visit_recording_consents
       where practice_id in (${aId}, ${bId})`;
+    await cleanup`delete from portal_sign_in_identities
+      where id in (${aSignInIdentity}, ${bSignInIdentity})`;
     await cleanup`delete from telehealth_visits
       where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from appointments where id in (${aAppointment}, ${bAppointment}, ${aSoapLegalAppointment}, ${bSoapLegalAppointment}, ${aSoapDraftFinalAppointment}, ${aSoapDoubleFinalAppointment}, ${aSoapDiscardAppointment})`;
