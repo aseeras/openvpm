@@ -16,6 +16,7 @@ import {
   verifyAppleIdentityToken,
 } from "@/lib/portal/apple-sign-in";
 import { insertPortalSession } from "@/lib/portal/create-session";
+import { normalizeEmail, signUpPracticeId } from "@/lib/portal/accounts";
 import {
   portalSessionCookieName,
   portalSessionCookieOptions,
@@ -27,6 +28,9 @@ const input = z.object({
   identityToken: z.string().min(1).max(APPLE_IDENTITY_TOKEN_MAX_LENGTH),
   // "link" connects the Apple ID to the client already signed in here.
   mode: z.enum(["sign_in", "link"]).default("sign_in"),
+  // From Apple's sheet on the first sign-in only; not part of the signed token.
+  givenName: z.string().trim().max(128).optional(),
+  familyName: z.string().trim().max(128).optional(),
 });
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
 const PROVIDER = "apple";
@@ -164,11 +168,29 @@ export async function POST(req: NextRequest) {
 
       // 2. First time: the email Apple vouches for matches exactly one client.
       if (!identity.emailVerified || !identity.email) return null;
+      const email = normalizeEmail(identity.email);
       const matches = await activeClient(tx)
-        .where(and(sql`lower(${clients.email}) = lower(${identity.email})`, isNull(clients.deletedAt)))
+        .where(and(sql`lower(${clients.email}) = ${email}`, isNull(clients.deletedAt)))
         .limit(2);
-      if (matches.length !== 1) return null;
-      const client = matches[0]!;
+      // Several clients share this email: don't guess which one it is.
+      if (matches.length > 1) return null;
+      let client = matches[0];
+      // 3. Someone new: create their client record, like signing up with a
+      // username and password does (Apple has already confirmed the email).
+      if (!client) {
+        const practiceId = await signUpPracticeId(tx);
+        if (!practiceId) return null;
+        const [created] = await tx
+          .insert(clients)
+          .values({
+            practiceId,
+            firstName: parsed.data.givenName || "Apple",
+            lastName: parsed.data.familyName || (parsed.data.givenName ? "" : "user"),
+            email,
+          })
+          .returning({ id: clients.id, practiceId: clients.practiceId });
+        client = created!;
+      }
       await tx.insert(portalSignInIdentities).values({
         practiceId: client.practiceId,
         clientId: client.id,
@@ -185,7 +207,7 @@ export async function POST(req: NextRequest) {
         {
           code: "not_linked",
           error:
-            "We couldn't find a ZenPaws account for this Apple ID. Sign in with your username and password (or create an account), then turn on Sign in with Apple in Account.",
+            "We couldn't set up an account with this Apple ID. Sign in with your username and password (or create an account), then turn on Sign in with Apple in Account.",
         },
         404,
       );

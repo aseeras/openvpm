@@ -51,11 +51,19 @@ export async function runAppleSignIn(mode: "sign_in" | "link"): Promise<AppleSig
   }
 
   let identityToken: unknown;
+  // Apple shares the person's name only the first time they sign in to the
+  // app; it names a new account.
+  let givenName: string | undefined;
+  let familyName: string | undefined;
   try {
     const result = (await cap.nativePromise(PLUGIN, "authorize", { nonce })) as {
       identityToken?: unknown;
+      givenName?: unknown;
+      familyName?: unknown;
     };
     identityToken = result?.identityToken;
+    if (typeof result?.givenName === "string") givenName = result.givenName.trim().slice(0, 128) || undefined;
+    if (typeof result?.familyName === "string") familyName = result.familyName.trim().slice(0, 128) || undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     // Closing Apple's sheet is not an error worth showing.
@@ -66,7 +74,7 @@ export async function runAppleSignIn(mode: "sign_in" | "link"): Promise<AppleSig
     return { status: "error", message: "Sign in with Apple didn't finish. Please try again." };
   }
 
-  const verified = await postJson("/api/portal/apple", { identityToken, mode });
+  const verified = await postJson("/api/portal/apple", { identityToken, mode, givenName, familyName });
   if (verified.ok) return { status: "ok" };
   return {
     status: "error",
