@@ -46,7 +46,7 @@ if (!app) {
 
 const builds = await api(
   `/v1/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=5` +
-    `&fields[builds]=version,uploadedDate,processingState,expired,buildBetaDetail` +
+    `&fields[builds]=version,uploadedDate,processingState,expired,buildBetaDetail,preReleaseVersion` +
     `&include=buildBetaDetail,preReleaseVersion` +
     `&fields[buildBetaDetails]=internalBuildState,externalBuildState` +
     `&fields[preReleaseVersions]=version`,
@@ -66,7 +66,7 @@ for (const build of builds.data ?? []) {
   const version = versionRef ? included.get(`${versionRef.type}:${versionRef.id}`) : null;
   lines.push(
     `| ${version?.attributes?.version ?? "?"} | ${build.attributes.version} | ` +
-      `${build.attributes.uploadedDate?.replace("T", " ").slice(0, 16) ?? "?"} | ` +
+      `${build.attributes.uploadedDate ? new Date(build.attributes.uploadedDate).toISOString().replace("T", " ").slice(0, 16) : "?"} | ` +
       `${build.attributes.processingState} | ${detail?.attributes?.internalBuildState ?? "?"} | ` +
       `${build.attributes.expired ? "yes" : "no"} |`,
   );
