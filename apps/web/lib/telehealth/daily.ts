@@ -44,7 +44,7 @@ export class TelehealthVideoUnavailableError extends Error {
 
 async function daily<T>(
   path: string,
-  init: { method: "POST" | "DELETE"; body?: unknown },
+  init: { method: "GET" | "POST" | "DELETE"; body?: unknown },
 ): Promise<T | null> {
   const key = env("DAILY_API_KEY");
   if (!key || !dailyDomain()) throw new TelehealthVideoUnavailableError();
@@ -83,6 +83,8 @@ export async function createVisitRoom(): Promise<{ name: string }> {
         enable_chat: true,
         enable_screenshare: false,
         enable_knocking: false,
+        // Only used when the client agrees to a transcript of the visit.
+        enable_transcription_storage: true,
         lang: "en",
       },
     },
@@ -116,4 +118,87 @@ export async function createJoinUrl(input: {
 /** Close the room so nobody can rejoin a finished visit. */
 export async function deleteVisitRoom(roomName: string): Promise<void> {
   await daily(`/rooms/${encodeURIComponent(roomName)}`, { method: "DELETE" });
+}
+
+/**
+ * Transcripts (text only, never audio or video) for visits where the client
+ * agreed. Daily transcribes the call as it happens and saves a WebVTT file
+ * labelled by each person's name; we copy it into the visit and delete
+ * Daily's copy.
+ */
+export async function startTranscription(roomName: string): Promise<void> {
+  await daily(`/rooms/${encodeURIComponent(roomName)}/transcription/start`, {
+    method: "POST",
+    body: { language: "en", punctuate: true },
+  });
+}
+
+export async function stopTranscription(roomName: string): Promise<void> {
+  await daily(`/rooms/${encodeURIComponent(roomName)}/transcription/stop`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export type DailyTranscriptInfo = {
+  transcriptId: string;
+  status: string;
+  isVttAvailable: boolean;
+  createdAt: string;
+};
+
+/** The newest transcript Daily holds for a room, if any. */
+export async function latestTranscript(
+  roomName: string,
+): Promise<DailyTranscriptInfo | null> {
+  const result = await daily<{
+    data?: Array<{
+      transcriptId?: string;
+      status?: string;
+      isVttAvailable?: boolean;
+      created_at?: string;
+    }>;
+  }>(`/transcript?room_name=${encodeURIComponent(roomName)}&limit=10`, {
+    method: "GET",
+  });
+  const rows = (result?.data ?? [])
+    .filter((row) => typeof row.transcriptId === "string")
+    .map((row) => ({
+      transcriptId: row.transcriptId as string,
+      status: row.status ?? "",
+      isVttAvailable: row.isVttAvailable === true,
+      createdAt: row.created_at ?? "",
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return rows[0] ?? null;
+}
+
+const TRANSCRIPT_MAX_BYTES = 2 * 1024 * 1024;
+
+export async function downloadTranscript(transcriptId: string): Promise<string> {
+  const result = await daily<{ link?: string; download_link?: string }>(
+    `/transcript/${encodeURIComponent(transcriptId)}/access-link`,
+    { method: "GET" },
+  );
+  const link = result?.link ?? result?.download_link;
+  if (!link || !/^https:\/\//.test(link)) {
+    throw new TelehealthVideoUnavailableError("The transcript is not ready yet.");
+  }
+  const response = await fetch(link, { signal: AbortSignal.timeout(DAILY_TIMEOUT_MS) });
+  if (!response.ok) {
+    throw new TelehealthVideoUnavailableError(
+      `Could not download the transcript (HTTP ${response.status}).`,
+    );
+  }
+  const text = await response.text();
+  if (text.length > TRANSCRIPT_MAX_BYTES) {
+    throw new TelehealthVideoUnavailableError("The transcript is too large.");
+  }
+  return text;
+}
+
+export async function deleteTranscript(transcriptId: string): Promise<void> {
+  await daily(`/transcript/${encodeURIComponent(transcriptId)}`, {
+    method: "DELETE",
+  });
 }

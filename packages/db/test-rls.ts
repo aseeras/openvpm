@@ -130,6 +130,7 @@ const mismatchedVisitRecording = randomUUID();
 const aTelehealthVisit = randomUUID();
 const bTelehealthVisit = randomUUID();
 const aSignInIdentity = randomUUID();
+const aTranscriptConsent = randomUUID();
 const bSignInIdentity = randomUUID();
 const aPortalAccount = randomUUID();
 const bPortalAccount = randomUUID();
@@ -1033,6 +1034,73 @@ try {
   check(
     "application role cannot delete a video visit",
     telehealthDeleteBlocked,
+  );
+
+  // Transcript consent for a video visit: tenant-scoped, bound to the
+  // visit's own client, append-only.
+  const insertedTranscriptConsent = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into telehealth_transcript_consents
+      (id, practice_id, visit_id, client_id, action, signer_name, disclosure_version, disclosure)
+      values (${aTranscriptConsent}, ${aId}, ${aTelehealthVisit}, ${aClient}, 'granted', 'Client A', 'v1', 'Transcript disclosure')
+      returning id`;
+  });
+  check(
+    "tenant A can record a client's transcript consent",
+    insertedTranscriptConsent.length === 1,
+  );
+
+  let wrongClientConsentBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into telehealth_transcript_consents
+        (practice_id, visit_id, client_id, action, signer_name, disclosure_version, disclosure)
+        values (${aId}, ${aTelehealthVisit}, ${bClient}, 'granted', 'Someone else', 'v1', 'Transcript disclosure')`;
+    });
+  } catch {
+    wrongClientConsentBlocked = true;
+  }
+  check(
+    "transcript consent must come from the visit's own client",
+    wrongClientConsentBlocked,
+  );
+
+  const tenantBConsents = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${bId}, true)`;
+    return tx`select id from telehealth_transcript_consents where id = ${aTranscriptConsent}`;
+  });
+  check(
+    "tenant B cannot see tenant A's transcript consents",
+    tenantBConsents.length === 0,
+  );
+
+  let consentEditBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update telehealth_transcript_consents set action = 'declined' where id = ${aTranscriptConsent}`;
+    });
+  } catch {
+    consentEditBlocked = true;
+  }
+  check(
+    "application role cannot change a transcript consent",
+    consentEditBlocked,
+  );
+
+  let readyWithoutTranscriptBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update telehealth_visits set transcript_status = 'ready' where id = ${aTelehealthVisit}`;
+    });
+  } catch {
+    readyWithoutTranscriptBlocked = true;
+  }
+  check(
+    "a video visit cannot be marked transcript-ready without a transcript",
+    readyWithoutTranscriptBlocked,
   );
 
   // Portal sign-in links (Sign in with Apple): tenant-scoped, bound to a
@@ -5182,6 +5250,8 @@ try {
       where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from portal_sign_in_identities
       where id in (${aSignInIdentity}, ${bSignInIdentity})`;
+    await cleanup`delete from telehealth_transcript_consents
+      where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from telehealth_visits
       where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from appointments where id in (${aAppointment}, ${bAppointment}, ${aSoapLegalAppointment}, ${bSoapLegalAppointment}, ${aSoapDraftFinalAppointment}, ${aSoapDoubleFinalAppointment}, ${aSoapDiscardAppointment})`;

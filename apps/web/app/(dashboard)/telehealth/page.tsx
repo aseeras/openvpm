@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { TELEHEALTH_POLL_INTERVAL_MS } from "@/lib/telehealth/visits";
+import {
+  CallTranscriptControls,
+  FinishedVisitNote,
+} from "@/components/telehealth/transcript-controls";
 
 const CLINICIAN_ROLES = new Set(["admin", "veterinarian"]);
 
@@ -130,7 +134,8 @@ export default function TelehealthPage() {
           <h1 className="text-2xl font-semibold">Video visits</h1>
           <p className="text-sm text-muted-foreground">
             Clients with established pets join from the client portal or the
-            ZenPaws app. Calls are not recorded.
+            ZenPaws app. Calls are not recorded; a written transcript is made
+            only when the client agrees.
           </p>
         </div>
         {data.configured ? (
@@ -203,7 +208,8 @@ export default function TelehealthPage() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {isClinician ? <CallTranscriptControls visit={activeCall} /> : null}
             <iframe
               title="Video visit"
               src={call.url}
@@ -352,6 +358,9 @@ export default function TelehealthPage() {
                     {STATUS_LABEL[visit.status] ?? visit.status}
                     {visit.endedAt ? ` at ${formatTime(visit.endedAt)}` : ""}
                   </span>
+                  {visit.status === "completed" ? (
+                    <FinishedVisitNote visit={visit} canWrite={isClinician} />
+                  ) : null}
                 </li>
               ))}
             </ul>

@@ -16,6 +16,7 @@ import {
   clients,
   patients,
   practices,
+  telehealthTranscriptConsents,
   telehealthVisits,
   users,
 } from "@openpims/db";
@@ -25,9 +26,15 @@ import { rateLimit } from "@/lib/rate-limit";
 import { billingEnforced, hasHostedFullAccess } from "@/lib/billing/plans";
 import {
   createJoinUrl,
+  startTranscription,
+  stopTranscription,
   telehealthVideoConfigured,
   TelehealthVideoUnavailableError,
 } from "@/lib/telehealth/daily";
+import {
+  TRANSCRIPT_DISCLOSURE_VERSION,
+  transcriptDisclosure,
+} from "@/lib/telehealth/transcript";
 import {
   establishedPatientPredicate,
   isEstablishedPatient,
@@ -135,6 +142,7 @@ async function openVisitForClient(
       patientPhotoUrl: patients.photoUrl,
       startedAt: telehealthVisits.startedAt,
       clinicianName: users.name,
+      transcriptStatus: telehealthVisits.transcriptStatus,
     })
     .from(telehealthVisits)
     .innerJoin(patients, eq(patients.id, telehealthVisits.patientId))
@@ -243,9 +251,140 @@ export const portalTelehealthRouter = createRouter({
         ...pet,
         established: Boolean(pet.established),
       })),
-      visit: visit ? { ...visit, ahead } : null,
+      visit: visit
+        ? {
+            ...visit,
+            ahead,
+            // What the client is asked to agree to, when the vet asks.
+            transcriptDisclosure:
+              visit.transcriptStatus === "requested"
+                ? transcriptDisclosure({
+                    clinicianName: visit.clinicianName,
+                    patientName: visit.patientName,
+                    practiceName: practice.name,
+                  })
+                : null,
+          }
+        : null,
     };
   }),
+
+  /** The client's answer to the veterinarian's transcript request. */
+  answerTranscript: portalProcedure
+    .input(z.object({ visitId: z.string().uuid(), allow: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await limit(`portal-telehealth-transcript:${ctx.portalSessionId}`, 20, 60 * 60 * 1000);
+      const client = await sessionClient(ctx);
+      const practice = await practiceVideoState(ctx.db, client.practiceId);
+      const [visit] = await ctx.db
+        .select({
+          id: telehealthVisits.id,
+          status: telehealthVisits.status,
+          transcriptStatus: telehealthVisits.transcriptStatus,
+          roomName: telehealthVisits.videoRoomName,
+          patientName: patients.name,
+          clinicianName: users.name,
+        })
+        .from(telehealthVisits)
+        .innerJoin(patients, eq(patients.id, telehealthVisits.patientId))
+        .leftJoin(users, eq(users.id, telehealthVisits.clinicianId))
+        .where(
+          and(
+            eq(telehealthVisits.id, input.visitId),
+            eq(telehealthVisits.practiceId, client.practiceId),
+            eq(telehealthVisits.clientId, client.id),
+            isNull(telehealthVisits.deletedAt),
+          ),
+        )
+        .for("update", { of: telehealthVisits })
+        .limit(1);
+      if (!visit || visit.status !== "in_call" || visit.transcriptStatus !== "requested") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "There is no transcript request to answer.",
+        });
+      }
+      await ctx.db.insert(telehealthTranscriptConsents).values({
+        practiceId: client.practiceId,
+        visitId: visit.id,
+        clientId: client.id,
+        action: input.allow ? "granted" : "declined",
+        signerName: `${client.firstName} ${client.lastName}`.trim() || "Client",
+        disclosureVersion: TRANSCRIPT_DISCLOSURE_VERSION,
+        disclosure: transcriptDisclosure({
+          clinicianName: visit.clinicianName,
+          patientName: visit.patientName,
+          practiceName: practice.name,
+        }),
+      });
+      if (!input.allow) {
+        await ctx.db
+          .update(telehealthVisits)
+          .set({ transcriptStatus: "declined" })
+          .where(eq(telehealthVisits.id, visit.id));
+        return { transcriptStatus: "declined" as const };
+      }
+      try {
+        if (!visit.roomName) throw new TelehealthVideoUnavailableError();
+        await startTranscription(visit.roomName);
+      } catch {
+        await ctx.db
+          .update(telehealthVisits)
+          .set({
+            transcriptStatus: "failed",
+            transcriptError:
+              "The video service could not start a transcript. Transcription may not be enabled for this video account.",
+          })
+          .where(eq(telehealthVisits.id, visit.id));
+        return { transcriptStatus: "failed" as const };
+      }
+      await ctx.db
+        .update(telehealthVisits)
+        .set({ transcriptStatus: "active", transcriptError: null })
+        .where(eq(telehealthVisits.id, visit.id));
+      return { transcriptStatus: "active" as const };
+    }),
+
+  /** The client can stop the transcript at any time during the call. */
+  stopTranscript: portalProcedure
+    .input(z.object({ visitId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const client = await sessionClient(ctx);
+      const [visit] = await ctx.db
+        .select({
+          id: telehealthVisits.id,
+          transcriptStatus: telehealthVisits.transcriptStatus,
+          roomName: telehealthVisits.videoRoomName,
+        })
+        .from(telehealthVisits)
+        .where(
+          and(
+            eq(telehealthVisits.id, input.visitId),
+            eq(telehealthVisits.practiceId, client.practiceId),
+            eq(telehealthVisits.clientId, client.id),
+            isNull(telehealthVisits.deletedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!visit || visit.transcriptStatus !== "active") {
+        return { transcriptStatus: visit?.transcriptStatus ?? "off" };
+      }
+      // Only report "stopped" once the video service has actually stopped.
+      try {
+        if (visit.roomName) await stopTranscription(visit.roomName);
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Couldn't stop the transcript. Please try again.",
+        });
+      }
+      await ctx.db
+        .update(telehealthVisits)
+        .set({ transcriptStatus: "stopped" })
+        .where(eq(telehealthVisits.id, visit.id));
+      return { transcriptStatus: "stopped" as const };
+    }),
 
   /** Ask for a video visit and enter the waiting room. */
   request: portalProcedure

@@ -19,6 +19,7 @@ import {
   clinicalRecordCorrections,
   invoices,
   practices,
+  telehealthVisits,
   visitRecordings,
 } from "@openpims/db";
 import type { Database } from "@openpims/db/client";
@@ -295,6 +296,8 @@ export const aiRouter = createRouter({
         ),
         /** Draft from this consented visit recording's transcript. */
         recordingId: z.string().uuid().optional(),
+        /** Draft from this video visit's consented transcript. */
+        telehealthVisitId: z.string().uuid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -331,6 +334,35 @@ export const aiRouter = createRouter({
           });
         }
         transcript = recording.transcript;
+      } else if (input.telehealthVisitId) {
+        const [visit] = await ctx.db
+          .select({
+            status: telehealthVisits.transcriptStatus,
+            transcript: telehealthVisits.transcript,
+          })
+          .from(telehealthVisits)
+          .where(
+            and(
+              eq(telehealthVisits.id, input.telehealthVisitId),
+              eq(telehealthVisits.patientId, input.patientId),
+              eq(telehealthVisits.practiceId, ctx.practiceId),
+              isNull(telehealthVisits.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (!visit) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Video visit not found",
+          });
+        }
+        if (visit.status !== "ready" || !visit.transcript) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This video visit has no transcript to draft from.",
+          });
+        }
+        transcript = visit.transcript;
       }
 
       const drafts = await rateLimit({

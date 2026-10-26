@@ -79,6 +79,14 @@ export default function PortalVideoVisitPage() {
   const cancel = trpc.portalTelehealth.cancel.useMutation({
     onSuccess: () => void utils.portalTelehealth.status.invalidate(),
   });
+  const answerTranscript = trpc.portalTelehealth.answerTranscript.useMutation({
+    onSettled: () => void utils.portalTelehealth.status.invalidate(),
+    onError: (e) => setError(e.message),
+  });
+  const stopTranscript = trpc.portalTelehealth.stopTranscript.useMutation({
+    onSettled: () => void utils.portalTelehealth.status.invalidate(),
+    onError: (e) => setError(e.message),
+  });
   const join = trpc.portalTelehealth.join.useMutation({
     onSuccess: (result) => setCallUrl(result.url),
     onError: (e) => {
@@ -131,6 +139,13 @@ export default function PortalVideoVisitPage() {
         patientName={visit.patientName}
         onRejoin={() => join.mutate({ visitId: visit.id })}
         onClose={() => router.push("/portal")}
+        transcript={{
+          status: visit.transcriptStatus,
+          disclosure: visit.transcriptDisclosure,
+          busy: answerTranscript.isPending || stopTranscript.isPending,
+          onAnswer: (allow) => answerTranscript.mutate({ visitId: visit.id, allow }),
+          onStop: () => stopTranscript.mutate({ visitId: visit.id }),
+        }}
       />
     );
   }
@@ -530,6 +545,7 @@ function CallScreen({
   patientName,
   onRejoin,
   onClose,
+  transcript,
 }: {
   url: string | null;
   joining: boolean;
@@ -540,6 +556,13 @@ function CallScreen({
   patientName: string;
   onRejoin: () => void;
   onClose: () => void;
+  transcript: {
+    status: string;
+    disclosure: string | null;
+    busy: boolean;
+    onAnswer: (allow: boolean) => void;
+    onStop: () => void;
+  };
 }) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -570,6 +593,23 @@ function CallScreen({
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
+      {transcript.status === "active" ? (
+        <div className="flex items-center justify-between gap-2 px-4 pb-2">
+          <span className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-extrabold text-white" style={{ backgroundColor: "rgba(255,255,255,0.12)" }}>
+            <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" aria-hidden="true" />
+            Transcript on
+          </span>
+          <button
+            type="button"
+            onClick={transcript.onStop}
+            disabled={transcript.busy}
+            className="rounded-full px-3 py-1.5 text-xs font-extrabold text-white disabled:opacity-60"
+            style={{ backgroundColor: "rgba(255,255,255,0.16)" }}
+          >
+            Stop transcript
+          </button>
+        </div>
+      ) : null}
       {url ? (
         <iframe
           title="Video visit"
@@ -600,6 +640,39 @@ function CallScreen({
           )}
         </div>
       )}
+      {transcript.status === "requested" && transcript.disclosure ? (
+        <div className="absolute inset-x-0 bottom-0 z-10 rounded-t-3xl bg-white p-5" role="dialog" aria-modal="false" aria-label="Allow a transcript of this visit" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)", color: ZP.ink }}>
+          <div className="mx-auto max-w-md space-y-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: ZP.chip, color: ZP.accent }}>
+                <FileText className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <h2 className="text-lg font-black">Allow a transcript of this visit?</h2>
+            </div>
+            <p className="text-sm leading-relaxed" style={{ color: ZP.muted }}>{transcript.disclosure}</p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                disabled={transcript.busy}
+                onClick={() => transcript.onAnswer(false)}
+                className="min-h-12 rounded-full border font-extrabold disabled:opacity-60"
+                style={{ borderColor: ZP.border }}
+              >
+                No thanks
+              </button>
+              <button
+                type="button"
+                disabled={transcript.busy}
+                onClick={() => transcript.onAnswer(true)}
+                className="min-h-12 rounded-full font-extrabold text-white disabled:opacity-60"
+                style={{ backgroundColor: ZP.accent }}
+              >
+                Allow transcript
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

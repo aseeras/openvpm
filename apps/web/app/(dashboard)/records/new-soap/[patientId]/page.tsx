@@ -136,6 +136,8 @@ export default function NewSoapNotePage() {
   const canCreateSoapNote = canCreateSoapNoteRole(userRole);
   const accessDenied = status !== "loading" && !canCreateSoapNote;
   const appointmentId = searchParams.get("appointmentId") ?? undefined;
+  // Opened from a finished video visit that has a consented transcript.
+  const telehealthVisitId = searchParams.get("telehealthVisitId") ?? undefined;
   const returnPath = appointmentId
     ? `/encounters/${encodeURIComponent(appointmentId)}`
     : "/records";
@@ -419,7 +421,7 @@ export default function NewSoapNotePage() {
     ) {
       return;
     }
-    draftWithAi.mutate({ patientId: params.patientId });
+    draftWithAi.mutate({ patientId: params.patientId, telehealthVisitId });
   }
 
   async function handleFinalize() {
@@ -904,7 +906,11 @@ export default function NewSoapNotePage() {
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              {draftWithAi.isPending ? "Drafting..." : "Draft with AI"}
+              {draftWithAi.isPending
+                ? "Drafting..."
+                : telehealthVisitId
+                  ? "Draft from video transcript"
+                  : "Draft with AI"}
             </Button>
           </div>
           {needsAiBillingSetup && !agentStatus.isLoading ? (
