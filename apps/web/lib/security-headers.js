@@ -3,20 +3,20 @@
 // endpoint in its own region; media flows peer to peer (or through Amazon's
 // TURN relay), which the content security policy does not govern. These
 // values are read when the app is built, so rebuild after changing them.
-function env(name) {
-  return (process.env[name] || "").trim();
-}
+// Read each setting by its literal name: the middleware runtime only
+// exposes environment variables referenced this way.
+const trim = (value) => (value || "").trim();
 const videoRegion =
-  env("TELEHEALTH_VIDEO") === "aws_kvs"
-    ? env("TELEHEALTH_VIDEO_REGION") ||
-      env("VISIT_RECORDING_TRANSCRIBE_REGION") ||
-      env("S3_REGION")
+  trim(process.env.TELEHEALTH_VIDEO) === "aws_kvs"
+    ? trim(process.env.TELEHEALTH_VIDEO_REGION) ||
+      trim(process.env.VISIT_RECORDING_TRANSCRIBE_REGION) ||
+      trim(process.env.S3_REGION)
     : "";
 const videoEnabled = /^[a-z0-9-]{4,32}$/.test(videoRegion);
 // A local stand-in for the signaling service, used only by tests.
 const videoTestOrigin = (() => {
   try {
-    const url = new URL(env("KVS_ENDPOINT"));
+    const url = new URL(trim(process.env.KVS_ENDPOINT));
     return `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`;
   } catch {
     return null;

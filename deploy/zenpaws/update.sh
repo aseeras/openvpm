@@ -23,6 +23,7 @@ grep -q '^APPLE_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_SIGN_IN_CLI
 # Video visits run on Amazon (Kinesis Video Streams WebRTC) with the server's
 # AWS credentials; the old third-party video settings are no longer used.
 grep -q '^TELEHEALTH_VIDEO=' /etc/openvpm.env || echo 'TELEHEALTH_VIDEO=aws_kvs' >> /etc/openvpm.env
+grep -q '^TELEHEALTH_VIDEO_REGION=.' /etc/openvpm.env || { sed -i '/^TELEHEALTH_VIDEO_REGION=/d' /etc/openvpm.env; echo 'TELEHEALTH_VIDEO_REGION=us-east-2' >> /etc/openvpm.env; }
 sed -i '/^DAILY_API_KEY=/d; /^DAILY_DOMAIN=/d; /^DAILY_API_URL=/d' /etc/openvpm.env
 
 BRANCH="${1:-zenpaws}"
@@ -58,5 +59,14 @@ chown -R openvpm:openvpm "$SA"
 
 systemctl restart openvpm
 for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:3000/login && break; sleep 3; done
+# Report whether video visits came on (names only; no secret values).
+for name in TELEHEALTH_VIDEO TELEHEALTH_VIDEO_REGION S3_ACCESS_KEY S3_SECRET_KEY; do
+  grep -q "^${name}=." /etc/openvpm.env && echo "  ${name}: set" || echo "  ${name}: MISSING"
+done
+if curl -fsI http://127.0.0.1:3000/login | grep -qi 'kinesisvideo'; then
+  echo "video visits: on (Amazon)"
+else
+  echo "WARNING: video visits are not on in this build; send these lines to support."
+fi
 curl -sS -o /dev/null -w "local /login HTTP %{http_code}\n" http://127.0.0.1:3000/login
 echo "=== $(date -u +%FT%TZ) UPDATE COMPLETE"
