@@ -53,6 +53,6 @@ cp -r /opt/openvpm/apps/web/.next/static "$SA/apps/web/.next/static"
 chown -R openvpm:openvpm "$SA"
 
 systemctl restart openvpm
-for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:3000/login && break; sleep 3; done
+for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:3000/login && break; sleep 3; done
 curl -sS -o /dev/null -w "local /login HTTP %{http_code}\n" http://127.0.0.1:3000/login
 echo "=== $(date -u +%FT%TZ) UPDATE COMPLETE"
