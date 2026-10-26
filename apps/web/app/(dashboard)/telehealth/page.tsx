@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Loader2, PhoneOff, Video, VideoOff, X } from "lucide-react";
@@ -20,6 +20,10 @@ import {
   CallTranscriptControls,
   FinishedVisitNote,
 } from "@/components/telehealth/transcript-controls";
+import {
+  DailyCallPanel,
+  type DailyCallPanelHandle,
+} from "@/components/telehealth/daily-call-panel";
 
 const CLINICIAN_ROLES = new Set(["admin", "veterinarian"]);
 
@@ -62,6 +66,8 @@ export default function TelehealthPage() {
     null,
   );
 
+  const callPanel = useRef<DailyCallPanelHandle>(null);
+  const [ending, setEnding] = useState(false);
   const refresh = () => utils.telehealth.queue.invalidate();
   const onError = (error: { message: string }) => toast.error(error.message);
 
@@ -134,8 +140,8 @@ export default function TelehealthPage() {
           <h1 className="text-2xl font-semibold">Video visits</h1>
           <p className="text-sm text-muted-foreground">
             Clients with established pets join from the client portal or the
-            ZenPaws app. Calls are not recorded; a written transcript is made
-            only when the client agrees.
+            ZenPaws app. Video is never recorded. With the client&apos;s consent,
+            the call audio is recorded for a written transcript and then deleted.
           </p>
         </div>
         {data.configured ? (
@@ -200,21 +206,30 @@ export default function TelehealthPage() {
               <Button
                 type="button"
                 variant="destructive"
-                disabled={end.isPending}
-                onClick={() => end.mutate({ visitId: activeCall.id })}
+                disabled={end.isPending || ending}
+                onClick={async () => {
+                  // Send any transcript audio before the call closes.
+                  setEnding(true);
+                  try {
+                    await callPanel.current?.finishRecording();
+                  } finally {
+                    setEnding(false);
+                  }
+                  end.mutate({ visitId: activeCall.id });
+                }}
               >
                 <PhoneOff className="mr-2 h-4 w-4" />
-                End visit
+                {ending ? "Saving audio…" : "End visit"}
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {isClinician ? <CallTranscriptControls visit={activeCall} /> : null}
-            <iframe
-              title="Video visit"
-              src={call.url}
-              allow="camera; microphone; autoplay; fullscreen; display-capture"
-              className="h-[70vh] min-h-[420px] w-full rounded-lg border border-border bg-black"
+            <DailyCallPanel
+              ref={callPanel}
+              url={call.url}
+              visitId={activeCall.id}
+              transcriptStatus={activeCall.transcriptStatus}
             />
           </CardContent>
         </Card>

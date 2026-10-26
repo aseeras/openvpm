@@ -134,11 +134,16 @@ describe("security headers for video visits", () => {
     expect(headers["Permissions-Policy"]).toContain(
       'microphone=(self "https://clinic.daily.co")',
     );
+    // The clinician's page joins with Daily's script (no eval needed).
+    expect(headers["Content-Security-Policy"]).toMatch(/script-src [^;]*https:\/\/\*\.daily\.co/);
+    expect(headers["Content-Security-Policy"]).toMatch(/connect-src [^;]*wss:\/\/\*\.daily\.co/);
+    expect(headers["Content-Security-Policy"]).not.toContain("'unsafe-eval'");
   });
 
   it("keeps the camera blocked when video visits are not configured", async () => {
     const headers = await headersWith("");
     expect(headers["Content-Security-Policy"]).not.toContain("frame-src");
+    expect(headers["Content-Security-Policy"]).not.toContain("daily.co");
     expect(headers["Permissions-Policy"]).toContain("camera=()");
   });
 });

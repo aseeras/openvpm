@@ -1,9 +1,18 @@
 // Video visits embed the clinic's own Daily (daily.co) room. Only that exact
 // origin may be framed or use the camera and microphone, and only when
-// DAILY_DOMAIN is configured (it must be set before the app is built).
+// DAILY_DOMAIN is configured (it must be set before the app is built). The
+// clinician's visit page joins with Daily's script instead of a frame, which
+// needs Daily's call bundle and signalling/media hosts.
 const dailyDomain = (process.env.DAILY_DOMAIN || "").trim().toLowerCase();
 const videoOrigin = /^[a-z0-9-]{1,63}$/.test(dailyDomain)
   ? `https://${dailyDomain}.daily.co`
+  : null;
+
+const dailyScriptHosts = videoOrigin
+  ? "https://*.daily.co https://*.dailywebrtc.com https://*.dailywebrtc.net"
+  : null;
+const dailyConnectHosts = videoOrigin
+  ? `${dailyScriptHosts} wss://*.daily.co wss://*.dailywebrtc.com wss://*.dailywebrtc.net`
   : null;
 
 const contentSecurityPolicy = [
@@ -19,10 +28,16 @@ const contentSecurityPolicy = [
     "script-src 'self' 'unsafe-inline'",
     process.env.NODE_ENV === "development" ? "'unsafe-eval'" : null,
     "https://va.vercel-scripts.com",
+    dailyScriptHosts,
   ]
     .filter(Boolean)
     .join(" "),
-  "connect-src 'self' https://app.openvpm.com https://vitals.vercel-insights.com https://va.vercel-scripts.com",
+  [
+    "connect-src 'self' https://app.openvpm.com https://vitals.vercel-insights.com https://va.vercel-scripts.com",
+    dailyConnectHosts,
+  ]
+    .filter(Boolean)
+    .join(" "),
   "worker-src 'self' blob:",
   videoOrigin ? `frame-src 'self' ${videoOrigin}` : null,
   process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : null,

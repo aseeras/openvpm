@@ -26,8 +26,6 @@ import { rateLimit } from "@/lib/rate-limit";
 import { billingEnforced, hasHostedFullAccess } from "@/lib/billing/plans";
 import {
   createJoinUrl,
-  startTranscription,
-  stopTranscription,
   telehealthVideoConfigured,
   TelehealthVideoUnavailableError,
 } from "@/lib/telehealth/daily";
@@ -281,7 +279,6 @@ export const portalTelehealthRouter = createRouter({
           id: telehealthVisits.id,
           status: telehealthVisits.status,
           transcriptStatus: telehealthVisits.transcriptStatus,
-          roomName: telehealthVisits.videoRoomName,
           patientName: patients.name,
           clinicianName: users.name,
         })
@@ -324,20 +321,7 @@ export const portalTelehealthRouter = createRouter({
           .where(eq(telehealthVisits.id, visit.id));
         return { transcriptStatus: "declined" as const };
       }
-      try {
-        if (!visit.roomName) throw new TelehealthVideoUnavailableError();
-        await startTranscription(visit.roomName);
-      } catch {
-        await ctx.db
-          .update(telehealthVisits)
-          .set({
-            transcriptStatus: "failed",
-            transcriptError:
-              "The video service could not start a transcript. Transcription may not be enabled for this video account.",
-          })
-          .where(eq(telehealthVisits.id, visit.id));
-        return { transcriptStatus: "failed" as const };
-      }
+      // The clinician's browser starts recording when it sees "active".
       await ctx.db
         .update(telehealthVisits)
         .set({ transcriptStatus: "active", transcriptError: null })
@@ -354,7 +338,6 @@ export const portalTelehealthRouter = createRouter({
         .select({
           id: telehealthVisits.id,
           transcriptStatus: telehealthVisits.transcriptStatus,
-          roomName: telehealthVisits.videoRoomName,
         })
         .from(telehealthVisits)
         .where(
@@ -370,15 +353,7 @@ export const portalTelehealthRouter = createRouter({
       if (!visit || visit.transcriptStatus !== "active") {
         return { transcriptStatus: visit?.transcriptStatus ?? "off" };
       }
-      // Only report "stopped" once the video service has actually stopped.
-      try {
-        if (visit.roomName) await stopTranscription(visit.roomName);
-      } catch {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Couldn't stop the transcript. Please try again.",
-        });
-      }
+      // The clinician's browser stops recording within a few seconds.
       await ctx.db
         .update(telehealthVisits)
         .set({ transcriptStatus: "stopped" })

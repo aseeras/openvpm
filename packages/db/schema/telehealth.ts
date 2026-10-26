@@ -30,8 +30,9 @@ export const telehealthVisitStatusEnum = pgEnum("telehealth_visit_status", [
  * A client-requested video visit for an established patient. The client
  * waits in a virtual waiting room until a clinician starts the call; the
  * video room exists only while the visit is in progress. Calls are not
- * recorded. With the client's consent the conversation can be transcribed
- * (text only); the transcript is kept here for the clinician's note.
+ * recorded. With the client's consent the clinician's browser records the
+ * call audio for Amazon Transcribe; the audio is deleted once transcribed
+ * and the transcript is kept here for the clinician's note.
  */
 export const telehealthVisits = pgTable(
   "telehealth_visits",
@@ -61,6 +62,13 @@ export const telehealthVisits = pgTable(
       .default("off"),
     transcript: text("transcript"),
     transcriptError: varchar("transcript_error", { length: 300 }),
+    /**
+     * The call audio recorded in the clinician's browser for the transcript.
+     * It is deleted once Amazon Transcribe has finished with it.
+     */
+    audioObjectKey: varchar("audio_object_key", { length: 512 }),
+    audioObjectVersionId: varchar("audio_object_version_id", { length: 1024 }),
+    transcriptionJobName: varchar("transcription_job_name", { length: 200 }),
   },
   (table) => ({
     queueIdx: index("telehealth_visits_queue_idx").on(

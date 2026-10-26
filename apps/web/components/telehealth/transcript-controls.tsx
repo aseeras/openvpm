@@ -53,7 +53,7 @@ export function CallTranscriptControls({ visit }: { visit: CallVisit }) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge>
           <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
-          Transcribing (client agreed)
+          Recording audio for the transcript (client agreed)
         </Badge>
         <Button type="button" variant="outline" size="sm" disabled={stop.isPending} onClick={() => stop.mutate({ visitId: visit.id })}>
           <Square className="mr-1.5 h-3.5 w-3.5" />
@@ -62,11 +62,19 @@ export function CallTranscriptControls({ visit }: { visit: CallVisit }) {
       </div>
     );
   }
+  if (status === "stopped" || status === "processing" || status === "ready") {
+    return (
+      <Badge variant="outline">
+        <Captions className="mr-1 h-3 w-3" />
+        Transcript recorded · it will be ready after the call
+      </Badge>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button type="button" variant="outline" disabled={request.isPending} onClick={() => request.mutate({ visitId: visit.id })}>
         <Captions className="mr-2 h-4 w-4" />
-        {status === "stopped" ? "Resume transcript" : "Transcribe visit"}
+        Transcribe visit
       </Button>
       {status === "declined" ? (
         <span className="text-sm text-muted-foreground">The client said no to a transcript.</span>
@@ -99,7 +107,7 @@ export function FinishedVisitNote({ visit, canWrite }: { visit: FinishedVisit; c
       if (result.transcriptStatus !== "processing") await utils.telehealth.queue.invalidate();
     },
   });
-  const processing = visit.transcriptStatus === "processing";
+  const processing = visit.transcriptStatus === "processing" || visit.transcriptStatus === "stopped";
   const ready = visit.transcriptStatus === "ready";
   const transcript = trpc.telehealth.transcript.useQuery(
     { visitId: visit.id },

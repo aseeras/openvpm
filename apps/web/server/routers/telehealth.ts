@@ -19,19 +19,18 @@ import {
 import {
   createJoinUrl,
   createVisitRoom,
-  deleteTranscript,
   deleteVisitRoom,
-  downloadTranscript,
-  latestTranscript,
-  stopTranscription,
   telehealthVideoConfigured,
   TelehealthVideoUnavailableError,
 } from "@/lib/telehealth/daily";
+import { TRANSCRIPT_UPLOAD_TIMEOUT_MS } from "@/lib/telehealth/transcript";
 import {
-  formatTranscript,
-  parseTranscriptVtt,
-  TRANSCRIPT_PROCESSING_TIMEOUT_MS,
-} from "@/lib/telehealth/transcript";
+  deleteVisitAudio,
+  deleteVisitTranscriptionJob,
+  formatChannelTranscript,
+  pollVisitTranscription,
+  visitRecordingTranscriptionConfigured,
+} from "@/lib/visit-recordings/aws";
 import { telehealthSettings } from "@/lib/telehealth/visits";
 
 /** Staff who see the video-visit queue. */
@@ -255,19 +254,13 @@ export const telehealthRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       if (visit.status !== "in_call") return { status: visit.status };
+      // A transcript being recorded stops with the call; the clinician's
+      // browser then uploads the audio.
       let transcriptStatus = visit.transcriptStatus;
-      if (visit.videoRoomName && transcriptStatus === "active") {
-        await stopTranscription(visit.videoRoomName).catch(() => {});
-      }
-      if (transcriptStatus === "active" || transcriptStatus === "stopped") {
-        transcriptStatus = "processing";
-      } else if (transcriptStatus === "requested") {
-        transcriptStatus = "off";
-      }
-      // Rooms also expire on their own, so a failed delete is not fatal. A
-      // room with a transcript is left to expire so Daily can finish saving
-      // the file.
-      if (visit.videoRoomName && transcriptStatus !== "processing") {
+      if (transcriptStatus === "active") transcriptStatus = "stopped";
+      else if (transcriptStatus === "requested") transcriptStatus = "off";
+      if (visit.videoRoomName) {
+        // Rooms also expire on their own, so a failed delete is not fatal.
         await deleteVisitRoom(visit.videoRoomName).catch(() => {});
       }
       await ctx.db
@@ -289,7 +282,14 @@ export const telehealthRouter = createRouter({
           message: "This visit is not in progress.",
         });
       }
-      if (visit.transcriptStatus === "active" || visit.transcriptStatus === "requested") {
+      if (!visitRecordingTranscriptionConfigured()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Transcripts need visit recording (Amazon Transcribe) set up on this server.",
+        });
+      }
+      // One transcript per visit: once recorded it can't be restarted.
+      if (!["off", "declined", "failed"].includes(visit.transcriptStatus)) {
         return { transcriptStatus: visit.transcriptStatus };
       }
       await ctx.db
@@ -312,14 +312,10 @@ export const telehealthRouter = createRouter({
           .where(eq(telehealthVisits.id, visit.id));
         return { transcriptStatus: "off" as const };
       }
-      if (visit.transcriptStatus !== "active" || !visit.videoRoomName) {
+      if (visit.transcriptStatus !== "active") {
         return { transcriptStatus: visit.transcriptStatus };
       }
-      try {
-        await stopTranscription(visit.videoRoomName);
-      } catch (error) {
-        throw videoError(error);
-      }
+      // The clinician's browser sees this, stops recording and uploads.
       await ctx.db
         .update(telehealthVisits)
         .set({ transcriptStatus: "stopped" })
@@ -328,17 +324,14 @@ export const telehealthRouter = createRouter({
     }),
 
   /**
-   * After the call, copy the finished transcript from Daily into the visit,
-   * then delete Daily's copy. Safe to call repeatedly while it is processing.
+   * After the call, check on Amazon Transcribe and store the transcript, then
+   * delete the audio and the job. Safe to call repeatedly while processing.
    */
   syncTranscript: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
     .input(z.object({ visitId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
-      if (visit.transcriptStatus !== "processing" || !visit.videoRoomName) {
-        return { transcriptStatus: visit.transcriptStatus };
-      }
       const fail = async (message: string) => {
         await ctx.db
           .update(telehealthVisits)
@@ -346,25 +339,15 @@ export const telehealthRouter = createRouter({
           .where(eq(telehealthVisits.id, visit.id));
         return { transcriptStatus: "failed" as const };
       };
-      let info;
-      try {
-        info = await latestTranscript(visit.videoRoomName);
-      } catch (error) {
-        throw videoError(error);
+      // The browser that recorded the call never uploaded it (closed tab).
+      if (visit.transcriptStatus === "stopped" && visit.status !== "in_call") {
+        const waited = Date.now() - (visit.endedAt ?? new Date()).getTime();
+        return waited > TRANSCRIPT_UPLOAD_TIMEOUT_MS
+          ? fail("The call audio was not uploaded, so no transcript was made.")
+          : { transcriptStatus: "stopped" as const };
       }
-      const waitedTooLong =
-        Date.now() - (visit.endedAt ?? new Date()).getTime() >
-        TRANSCRIPT_PROCESSING_TIMEOUT_MS;
-      if (!info || info.status === "t_in_progress" || !info.isVttAvailable) {
-        if (info?.status === "t_error") {
-          return fail("The video service could not finish the transcript.");
-        }
-        return waitedTooLong
-          ? fail("No transcript was saved for this call.")
-          : { transcriptStatus: "processing" as const };
-      }
-      if (info.status !== "t_finished") {
-        return fail("The video service could not finish the transcript.");
+      if (visit.transcriptStatus !== "processing" || !visit.transcriptionJobName) {
+        return { transcriptStatus: visit.transcriptStatus };
       }
       const [names] = await ctx.db
         .select({
@@ -376,22 +359,36 @@ export const telehealthRouter = createRouter({
         .leftJoin(users, eq(users.id, telehealthVisits.clinicianId))
         .where(eq(telehealthVisits.id, visit.id))
         .limit(1);
-      let text: string;
+      // Channel 0 is the clinician's microphone, channel 1 the client.
+      const speakers = [names?.clinicianName || "Veterinarian", names?.clientName || "Client"];
+      let poll;
       try {
-        const vtt = await downloadTranscript(info.transcriptId);
-        text = formatTranscript(
-          parseTranscriptVtt(vtt, [names?.clinicianName ?? "", names?.clientName ?? ""]),
-        ).slice(0, 200000);
-      } catch (error) {
-        throw videoError(error);
+        poll = await pollVisitTranscription(visit.transcriptionJobName, (output) =>
+          formatChannelTranscript(output, speakers),
+        );
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Could not reach the transcription service. Try again.",
+        });
       }
-      if (!text.trim()) return fail("The transcript was empty.");
+      if (poll.state === "in_progress") return { transcriptStatus: "processing" as const };
+
+      // Done either way: the audio and the service's copy are no longer needed.
+      if (visit.audioObjectKey) {
+        await deleteVisitAudio({ key: visit.audioObjectKey, versionId: visit.audioObjectVersionId }).catch(() => {});
+      }
+      await deleteVisitTranscriptionJob(visit.transcriptionJobName).catch(() => {});
       await ctx.db
         .update(telehealthVisits)
-        .set({ transcriptStatus: "ready", transcript: text, transcriptError: null })
+        .set({ audioObjectKey: null, audioObjectVersionId: null })
         .where(eq(telehealthVisits.id, visit.id));
-      // Keep only our copy; Daily's is no longer needed.
-      await deleteTranscript(info.transcriptId).catch(() => {});
+
+      if (poll.state === "failed") return fail(poll.reason.slice(0, 300));
+      await ctx.db
+        .update(telehealthVisits)
+        .set({ transcriptStatus: "ready", transcript: poll.transcript, transcriptError: null })
+        .where(eq(telehealthVisits.id, visit.id));
       return { transcriptStatus: "ready" as const };
     }),
 

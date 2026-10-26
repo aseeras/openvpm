@@ -147,6 +147,11 @@ export async function startVisitTranscription(input: {
   jobName: string;
   key: string;
   format: VisitAudioFormat;
+  /**
+   * Stereo audio with one person per channel (video visits): label by
+   * channel instead of guessing speakers.
+   */
+  channelPerSpeaker?: boolean;
 }): Promise<void> {
   const config = requireConfig();
   await transcribe(config).send(
@@ -155,7 +160,9 @@ export async function startVisitTranscription(input: {
       LanguageCode: "en-US",
       MediaFormat: input.format,
       Media: { MediaFileUri: `s3://${config.bucket}/${input.key}` },
-      Settings: { ShowSpeakerLabels: true, MaxSpeakerLabels: 4 },
+      Settings: input.channelPerSpeaker
+        ? { ChannelIdentification: true }
+        : { ShowSpeakerLabels: true, MaxSpeakerLabels: 4 },
     }),
   );
 }
@@ -167,6 +174,7 @@ export type VisitTranscriptionPoll =
 
 export async function pollVisitTranscription(
   jobName: string,
+  format: (output: unknown) => string = formatTranscribeOutput,
 ): Promise<VisitTranscriptionPoll> {
   const config = requireConfig();
   const { TranscriptionJob: job } = await transcribe(config).send(
@@ -192,7 +200,7 @@ export async function pollVisitTranscription(
       reason: `Transcript download failed (HTTP ${response.status}).`,
     };
   }
-  const transcript = formatTranscribeOutput(await response.json());
+  const transcript = format(await response.json());
   if (!transcript) {
     return { state: "failed", reason: "No speech was found in the recording." };
   }
@@ -257,4 +265,59 @@ export function formatTranscribeOutput(output: unknown): string {
     return `Speaker ${speakerNumbers.get(turn.speaker)}: ${turn.text}`;
   });
   return lines.join("\n").slice(0, VISIT_TRANSCRIPT_MAX_LENGTH);
+}
+
+interface ChannelItem {
+  type?: string;
+  start_time?: string;
+  alternatives?: Array<{ content?: string }>;
+}
+
+/**
+ * Turn a channel-identification transcript (one person per channel) into
+ * "Name: …" turns in time order, using the given name for each channel
+ * (ch_0, ch_1, …).
+ */
+export function formatChannelTranscript(output: unknown, names: string[]): string {
+  const results = (output as { results?: unknown } | null)?.results as
+    | {
+        channel_labels?: { channels?: Array<{ channel_label?: string; items?: ChannelItem[] }> };
+        transcripts?: Array<{ transcript?: string }>;
+      }
+    | undefined;
+  const channels = results?.channel_labels?.channels ?? [];
+  const nameFor = (label: string | undefined) => {
+    const index = Number(/^ch_(\d+)$/.exec(label ?? "")?.[1] ?? NaN);
+    return Number.isInteger(index) && names[index] ? names[index]! : `Speaker ${Number.isInteger(index) ? index + 1 : "?"}`;
+  };
+
+  const words: Array<{ speaker: string; start: number; text: string }> = [];
+  for (const channel of channels) {
+    const speaker = nameFor(channel.channel_label);
+    for (const item of channel.items ?? []) {
+      const content = item.alternatives?.[0]?.content?.trim();
+      if (!content) continue;
+      if (item.type === "punctuation") {
+        const last = [...words].reverse().find((word) => word.speaker === speaker);
+        if (last) last.text += content;
+        continue;
+      }
+      words.push({ speaker, start: Number(item.start_time ?? 0), text: content });
+    }
+  }
+  if (words.length === 0) {
+    return (results?.transcripts?.[0]?.transcript?.trim() ?? "").slice(0, VISIT_TRANSCRIPT_MAX_LENGTH);
+  }
+
+  words.sort((a, b) => a.start - b.start);
+  const turns: Array<{ speaker: string; text: string }> = [];
+  for (const word of words) {
+    const current = turns.at(-1);
+    if (current && current.speaker === word.speaker) current.text += ` ${word.text}`;
+    else turns.push({ speaker: word.speaker, text: word.text });
+  }
+  return turns
+    .map((turn) => `${turn.speaker}: ${turn.text}`)
+    .join("\n")
+    .slice(0, VISIT_TRANSCRIPT_MAX_LENGTH);
 }
