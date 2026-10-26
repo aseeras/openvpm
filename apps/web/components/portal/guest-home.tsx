@@ -3,22 +3,19 @@ import {
   Globe,
   Home as HomeIcon,
   LogIn,
-  MessageSquare,
-  Phone,
+  PawPrint,
   Sparkles,
   Video,
 } from "lucide-react";
 import { portalLogo, ZP } from "@/lib/portal/zenpaws-theme";
 import {
-  ZENPAWS_PHONE_SMS,
-  ZENPAWS_PHONE_TEL,
   ZENPAWS_PRACTICE_NAME,
   ZENPAWS_SERVICES,
   ZENPAWS_WEBSITE,
 } from "@/lib/portal/zenpaws-guest";
 
 const STEPS = [
-  { title: "Book a house call", detail: "Text or call us to pick a time that suits you and your pet." },
+  { title: "Book a house call", detail: "Create a free account and pick a time that suits you and your pet." },
   { title: "Your first visit at home", detail: "A full exam and acupuncture where your pet is most relaxed." },
   { title: "Follow-ups your way", detail: "Back at home, or a quick video recheck from your couch." },
 ] as const;
@@ -62,21 +59,21 @@ export function GuestHome() {
           Acupuncture, rehab and herbal medicine in your home, where your pet
           is calm. Rechecks by video for pets we&apos;ve already met.
         </p>
-        <a
-          href={ZENPAWS_PHONE_SMS}
+        <Link
+          href="/portal/book"
           className="flex h-[50px] items-center justify-center gap-2 rounded-full font-extrabold"
           style={{ backgroundColor: ZP.sun, color: ZP.ink }}
         >
           <HomeIcon className="h-5 w-5" aria-hidden="true" />
           Book a house call
-        </a>
+        </Link>
       </section>
 
       <section className="grid grid-cols-4 gap-2.5" aria-label="Quick actions">
         {[
           { href: "/portal/video", label: "Video visit", icon: Video, tint: ZP.sunSoft, external: false },
-          { href: ZENPAWS_PHONE_SMS, label: "Text us", icon: MessageSquare, tint: ZP.chip, external: true },
-          { href: ZENPAWS_PHONE_TEL, label: "Call", icon: Phone, tint: ZP.chip, external: true },
+          { href: "/portal/book", label: "House call", icon: HomeIcon, tint: ZP.chip, external: false },
+          { href: "/portal/pets", label: "Pets", icon: PawPrint, tint: ZP.chip, external: false },
           { href: ZENPAWS_WEBSITE, label: "Website", icon: Globe, tint: ZP.chip, external: true },
         ].map((action) => {
           const content = (

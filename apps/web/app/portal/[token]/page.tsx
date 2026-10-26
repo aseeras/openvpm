@@ -55,15 +55,15 @@ export default function PortalHomePage() {
         <AlertCircle className="mx-auto h-8 w-8" style={{ color: ZP.accent }} aria-hidden="true" />
         <h1 className="mt-3 text-xl font-black">Sign in to ZenPaws</h1>
         <p className="mt-2 text-sm" style={{ color: ZP.muted }}>
-          Open the sign-in link the clinic sent you. Need a new one? Call or text us.
+          We couldn&apos;t open your account just now. Please try again.
         </p>
-        <a
-          href="tel:+13123714652"
+        <Link
+          href="/portal/account"
           className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full font-extrabold text-white"
           style={{ backgroundColor: ZP.accent }}
         >
-          Call (312) 371-4652
-        </a>
+          Sign in
+        </Link>
       </section>
     );
   }

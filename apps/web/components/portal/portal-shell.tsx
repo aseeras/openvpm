@@ -43,9 +43,10 @@ const TABS = [
 function guestScreen(pathname: string): ReactNode {
   if (pathname.startsWith("/portal/video")) return <GuestVideoPreview />;
   if (pathname.startsWith("/portal/pets")) return <GuestPetsPreview />;
-  if (pathname.startsWith("/portal/appointments") || pathname.startsWith("/portal/book")) {
-    return <GuestVisitsPreview />;
+  if (pathname.startsWith("/portal/book")) {
+    return <SignInCard reason="Create a free account to book a house call." initialMode="sign_up" />;
   }
+  if (pathname.startsWith("/portal/appointments")) return <GuestVisitsPreview />;
   if (pathname.startsWith("/portal/messages")) {
     return <SignInCard reason="Sign in to message the clinic." />;
   }
