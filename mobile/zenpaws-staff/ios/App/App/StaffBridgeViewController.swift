@@ -33,6 +33,16 @@ class StaffBridgeViewController: CAPBridgeViewController {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.allowsBackForwardNavigationGestures = true
 
+        // A page saved before a server update points at scripts and styles
+        // that may be gone, which shows an unstyled page. Start each launch
+        // from a fresh copy; sign-in cookies are kept.
+        WKWebsiteDataStore.default().removeData(
+            ofTypes: [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache],
+            modifiedSince: Date(timeIntervalSince1970: 0)
+        ) { [weak webView] in
+            webView?.reload()
+        }
+
         refresh.addTarget(self, action: #selector(reloadPage), for: .valueChanged)
         webView.scrollView.refreshControl = refresh
 
