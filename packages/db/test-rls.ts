@@ -127,6 +127,8 @@ const bVisitRecordingConsent = randomUUID();
 const aVisitRecording = randomUUID();
 const bVisitRecording = randomUUID();
 const mismatchedVisitRecording = randomUUID();
+const aTelehealthVisit = randomUUID();
+const bTelehealthVisit = randomUUID();
 const aFile = randomUUID();
 const bFile = randomUUID();
 const aReplica = randomUUID();
@@ -938,6 +940,95 @@ try {
   check(
     "a recording cannot be marked transcribed without a transcript",
     transcriptWithoutTextBlocked,
+  );
+
+  // Video visits: tenant-scoped, the pet must belong to the requesting client,
+  // one open visit per pet, and rows are never deleted.
+  await owner`insert into telehealth_visits
+    (id, practice_id, client_id, patient_id, reason)
+    values (${bTelehealthVisit}, ${bId}, ${bClient}, ${bPatient}, 'Medication question')`;
+  const insertedTelehealthVisit = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into telehealth_visits
+      (id, practice_id, client_id, patient_id, reason)
+      values (${aTelehealthVisit}, ${aId}, ${aClient}, ${aPatient}, 'Stiffness or mobility')
+      returning id`;
+  });
+  check(
+    "tenant A can open a video visit for its own client's pet",
+    insertedTelehealthVisit.length === 1,
+  );
+
+  const tenantATelehealthVisits = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from telehealth_visits
+      where id in (${aTelehealthVisit}, ${bTelehealthVisit})`;
+  });
+  check(
+    "tenant A sees only its own video visits",
+    tenantATelehealthVisits.length === 1 &&
+      tenantATelehealthVisits[0]!.id === aTelehealthVisit,
+  );
+
+  let foreignPetVisitBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into telehealth_visits
+        (practice_id, client_id, patient_id, reason)
+        values (${aId}, ${bClient}, ${aPatient}, 'Something else')`;
+    });
+  } catch {
+    foreignPetVisitBlocked = true;
+  }
+  check(
+    "a video visit cannot pair a pet with another client",
+    foreignPetVisitBlocked,
+  );
+
+  let secondOpenVisitBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into telehealth_visits
+        (practice_id, client_id, patient_id, reason)
+        values (${aId}, ${aClient}, ${aPatient}, 'Something else')`;
+    });
+  } catch {
+    secondOpenVisitBlocked = true;
+  }
+  check(
+    "a pet can have only one open video visit",
+    secondOpenVisitBlocked,
+  );
+
+  let callWithoutRoomBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update telehealth_visits set status = 'in_call'
+        where id = ${aTelehealthVisit}`;
+    });
+  } catch {
+    callWithoutRoomBlocked = true;
+  }
+  check(
+    "a video visit cannot be in a call without a clinician and room",
+    callWithoutRoomBlocked,
+  );
+
+  let telehealthDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from telehealth_visits where id = ${aTelehealthVisit}`;
+    });
+  } catch {
+    telehealthDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a video visit",
+    telehealthDeleteBlocked,
   );
 
   let correctedReplacementTransactionAllowed = false;
@@ -4907,6 +4998,8 @@ try {
     await cleanup`delete from visit_recordings
       where id in (${aVisitRecording}, ${bVisitRecording}, ${mismatchedVisitRecording})`;
     await cleanup`delete from visit_recording_consents
+      where practice_id in (${aId}, ${bId})`;
+    await cleanup`delete from telehealth_visits
       where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from appointments where id in (${aAppointment}, ${bAppointment}, ${aSoapLegalAppointment}, ${bSoapLegalAppointment}, ${aSoapDraftFinalAppointment}, ${aSoapDoubleFinalAppointment}, ${aSoapDiscardAppointment})`;
     await cleanup`delete from rooms where id in (${aRoom}, ${bRoom})`;

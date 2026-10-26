@@ -16,6 +16,8 @@ import { inventoryRouter } from "./inventory";
 import { dataRouter } from "./data";
 import { aiRouter } from "./ai";
 import { visitRecordingsRouter } from "./visit-recordings";
+import { telehealthRouter } from "./telehealth";
+import { portalTelehealthRouter } from "./portal-telehealth";
 import { webhooksRouter } from "./webhooks";
 import { notificationsRouter } from "./notifications";
 import { encountersRouter } from "./encounters";
@@ -55,6 +57,8 @@ export const appRouter = createRouter({
   data: dataRouter,
   ai: aiRouter,
   visitRecordings: visitRecordingsRouter,
+  telehealth: telehealthRouter,
+  portalTelehealth: portalTelehealthRouter,
   webhooks: webhooksRouter,
   notifications: notificationsRouter,
   encounters: encountersRouter,

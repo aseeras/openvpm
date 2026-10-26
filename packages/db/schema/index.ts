@@ -46,3 +46,4 @@ export * from "./migration-records";
 export * from "./recent-clinical-items";
 export * from "./backup-runs";
 export * from "./visit-recordings";
+export * from "./telehealth";

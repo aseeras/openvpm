@@ -6,6 +6,7 @@ import {
   CalendarPlus,
   MessageSquare,
   PawPrint,
+  Video,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { PATIENT_SPECIES_EMOJI } from "@/lib/patients/species";
@@ -87,6 +88,24 @@ export default function PortalHomePage() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Video visit */}
+      <section className="mb-6">
+        <Link
+          href="/portal/video"
+          className="flex items-center gap-4 rounded-2xl bg-primary p-5 text-primary-foreground shadow-sm transition hover:bg-primary/90"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15">
+            <Video className="h-6 w-6" aria-hidden="true" />
+          </span>
+          <span>
+            <span className="block text-lg font-semibold">Video visit with the veterinarian</span>
+            <span className="block text-sm opacity-90">
+              Rechecks and questions from home, for pets we&apos;ve already seen
+            </span>
+          </span>
+        </Link>
       </section>
 
       {/* Request Appointment */}

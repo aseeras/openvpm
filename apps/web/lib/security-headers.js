@@ -1,3 +1,11 @@
+// Video visits embed the clinic's own Daily (daily.co) room. Only that exact
+// origin may be framed or use the camera and microphone, and only when
+// DAILY_DOMAIN is configured (it must be set before the app is built).
+const dailyDomain = (process.env.DAILY_DOMAIN || "").trim().toLowerCase();
+const videoOrigin = /^[a-z0-9-]{1,63}$/.test(dailyDomain)
+  ? `https://${dailyDomain}.daily.co`
+  : null;
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -16,6 +24,7 @@ const contentSecurityPolicy = [
     .join(" "),
   "connect-src 'self' https://app.openvpm.com https://vitals.vercel-insights.com https://va.vercel-scripts.com",
   "worker-src 'self' blob:",
+  videoOrigin ? `frame-src 'self' ${videoOrigin}` : null,
   process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : null,
 ]
   .filter(Boolean)
@@ -50,8 +59,14 @@ const securityHeaders = [
     // The house-call visit recorder uses this origin's own microphone (after
     // the client consents); embedded third-party frames stay blocked.
     key: "Permissions-Policy",
-    value:
-      "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    value: [
+      videoOrigin ? `camera=(self "${videoOrigin}")` : "camera=()",
+      videoOrigin ? `microphone=(self "${videoOrigin}")` : "microphone=(self)",
+      "geolocation=()",
+      "payment=()",
+      "usb=()",
+      "interest-cohort=()",
+    ].join(", "),
   },
 ];
 

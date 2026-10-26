@@ -757,6 +757,13 @@
       "when": 1792971390236,
       "tag": "0107_brown_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1792976727854,
+      "tag": "0108_easy_sandman",
+      "breakpoints": true
     }
   ]
 }
