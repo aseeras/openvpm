@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
         {
           code: "not_linked",
           error:
-            "We couldn't find a ZenPaws client for this Apple ID. Sign in once with the link we text you, then turn on Sign in with Apple in Account.",
+            "We couldn't find a ZenPaws account for this Apple ID. Sign in with your username and password (or create an account), then turn on Sign in with Apple in Account.",
         },
         404,
       );

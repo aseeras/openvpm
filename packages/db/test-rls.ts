@@ -131,6 +131,8 @@ const aTelehealthVisit = randomUUID();
 const bTelehealthVisit = randomUUID();
 const aSignInIdentity = randomUUID();
 const bSignInIdentity = randomUUID();
+const aPortalAccount = randomUUID();
+const bPortalAccount = randomUUID();
 const aFile = randomUUID();
 const bFile = randomUUID();
 const aReplica = randomUUID();
@@ -1105,6 +1107,105 @@ try {
   check(
     "application role cannot delete a sign-in link",
     signInDeleteBlocked,
+  );
+
+  // Client portal accounts: tenant-scoped, bound to a client of the same
+  // practice, usernames unique across the server, no deletes.
+  await owner`insert into portal_accounts
+    (id, practice_id, client_id, username, password_hash)
+    values (${bPortalAccount}, ${bId}, ${bClient}, 'rls-b-user', 'x')`;
+  const insertedPortalAccount = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into portal_accounts
+      (id, practice_id, client_id, username, password_hash)
+      values (${aPortalAccount}, ${aId}, ${aClient}, 'rls-a-user', 'x')
+      returning id`;
+  });
+  check(
+    "tenant A can create a portal account for its own client",
+    insertedPortalAccount.length === 1,
+  );
+
+  const tenantAPortalAccounts = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from portal_accounts
+      where id in (${aPortalAccount}, ${bPortalAccount})`;
+  });
+  check(
+    "tenant A sees only its own portal accounts",
+    tenantAPortalAccounts.length === 1 &&
+      tenantAPortalAccounts[0]!.id === aPortalAccount,
+  );
+
+  let foreignClientAccountBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_accounts
+        (practice_id, client_id, username, password_hash)
+        values (${aId}, ${bClient}, 'rls-other-user', 'x')`;
+    });
+  } catch {
+    foreignClientAccountBlocked = true;
+  }
+  check(
+    "a portal account cannot point at another practice's client",
+    foreignClientAccountBlocked,
+  );
+
+  let duplicateUsernameBlocked = false;
+  try {
+    await owner`insert into portal_accounts
+      (practice_id, client_id, username, password_hash)
+      values (${bId}, ${bClient}, 'rls-a-user', 'x')`;
+  } catch {
+    duplicateUsernameBlocked = true;
+  }
+  check(
+    "a username is unique across practices",
+    duplicateUsernameBlocked,
+  );
+
+  let portalAccountDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from portal_accounts where id = ${aPortalAccount}`;
+    });
+  } catch {
+    portalAccountDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a portal account",
+    portalAccountDeleteBlocked,
+  );
+
+  await owner`insert into portal_email_codes
+    (practice_id, purpose, email, code_hash, expires_at)
+    values (${bId}, 'sign_up', 'rls-b@example.com', 'x', now())`;
+  const tenantACodes = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from portal_email_codes where practice_id = ${bId}`;
+  });
+  check(
+    "tenant A cannot read another practice's email codes",
+    tenantACodes.length === 0,
+  );
+
+  let foreignCodeBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_email_codes
+        (practice_id, purpose, email, code_hash, expires_at)
+        values (${bId}, 'sign_up', 'rls-x@example.com', 'x', now())`;
+    });
+  } catch {
+    foreignCodeBlocked = true;
+  }
+  check(
+    "tenant A cannot write another practice's email codes",
+    foreignCodeBlocked,
   );
 
   let correctedReplacementTransactionAllowed = false;
@@ -5074,6 +5175,10 @@ try {
     await cleanup`delete from visit_recordings
       where id in (${aVisitRecording}, ${bVisitRecording}, ${mismatchedVisitRecording})`;
     await cleanup`delete from visit_recording_consents
+      where practice_id in (${aId}, ${bId})`;
+    await cleanup`delete from portal_accounts
+      where id in (${aPortalAccount}, ${bPortalAccount})`;
+    await cleanup`delete from portal_email_codes
       where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from portal_sign_in_identities
       where id in (${aSignInIdentity}, ${bSignInIdentity})`;

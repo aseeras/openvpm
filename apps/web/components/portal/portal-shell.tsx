@@ -8,6 +8,11 @@ import { trpc } from "@/lib/trpc";
 import { hexToHslString } from "@/lib/utils";
 import { ZP } from "@/lib/portal/zenpaws-theme";
 import { SignInCard } from "@/components/portal/sign-in-card";
+import {
+  GuestPetsPreview,
+  GuestVideoPreview,
+  GuestVisitsPreview,
+} from "@/components/portal/guest-previews";
 
 type PortalThemeStyle = CSSProperties & {
   "--primary"?: string;
@@ -31,15 +36,23 @@ const TABS = [
   },
 ] as const;
 
-function guestSignInReason(pathname: string): string {
-  if (pathname.startsWith("/portal/video")) {
-    return "Video visits are for pets we've already seen in person.";
-  }
-  if (pathname.startsWith("/portal/pets")) return "Your pets' records are private to you.";
+/**
+ * What a visitor without a session sees on each screen: working previews
+ * with sample pets for the main tabs, and sign-in/sign-up for the rest.
+ */
+function guestScreen(pathname: string): ReactNode {
+  if (pathname.startsWith("/portal/video")) return <GuestVideoPreview />;
+  if (pathname.startsWith("/portal/pets")) return <GuestPetsPreview />;
   if (pathname.startsWith("/portal/appointments") || pathname.startsWith("/portal/book")) {
-    return "Your visits and bookings are private to you.";
+    return <GuestVisitsPreview />;
   }
-  return "Your account is private to you.";
+  if (pathname.startsWith("/portal/messages")) {
+    return <SignInCard reason="Sign in to message the clinic." />;
+  }
+  if (pathname.startsWith("/portal/invoices")) {
+    return <SignInCard reason="Sign in to see your invoices." />;
+  }
+  return <SignInCard reason="Sign in, or create a free account." />;
 }
 
 /**
@@ -65,8 +78,8 @@ export function PortalShell({
     color: ZP.ink,
     ...(accent ? { "--primary": accent, "--ring": accent } : {}),
   };
-  // Visitors without a session can look around first; only the home screen
-  // is open to them and everything else asks them to sign in.
+  // Visitors without a session can look around first: the home screen and
+  // previews of the other tabs; real actions ask them to sign up.
   const isGuest = !isAccessExchange && client.error?.data?.code === "UNAUTHORIZED";
   const guestGated = isGuest && pathname !== "/portal";
   // The video visit flow is full-screen with its own footer, like the design.
@@ -80,7 +93,7 @@ export function PortalShell({
         id="main-content"
         className={`mx-auto w-full max-w-md px-5 pt-6 ${showTabs ? "pb-28" : "pb-10"}`}
       >
-        {guestGated ? <SignInCard reason={guestSignInReason(pathname)} /> : children}
+        {guestGated ? guestScreen(pathname) : children}
       </main>
       {showTabs ? (
         <nav

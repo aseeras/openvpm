@@ -3,6 +3,7 @@ export * from "./users";
 export * from "./clients";
 export * from "./portal-sessions";
 export * from "./portal-sign-in-identities";
+export * from "./portal-accounts";
 export * from "./patients";
 export * from "./patient-merge-events";
 export * from "./scheduling";

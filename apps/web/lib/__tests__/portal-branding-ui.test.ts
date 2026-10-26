@@ -58,5 +58,9 @@ describe("portal branding UI", () => {
     expect(shell).toContain("<SignInCard");
     expect(guestHome).toContain("ZENPAWS_SERVICES");
     expect(guestHome).toContain("Book a house call");
+    // Main tabs show working previews with sample pets before sign-up.
+    for (const preview of ["<GuestVideoPreview />", "<GuestPetsPreview />", "<GuestVisitsPreview />"]) {
+      expect(shell).toContain(preview);
+    }
   });
 });

@@ -7,7 +7,6 @@ import { TELEHEALTH_FEE_LABEL } from "@/lib/telehealth/visits";
  */
 export const ZENPAWS_PRACTICE_NAME = "ZenPaws";
 export const ZENPAWS_WEBSITE = "https://zenpawsdvm.com";
-export const ZENPAWS_PHONE_DISPLAY = "(312) 371-4652";
 export const ZENPAWS_PHONE_TEL = "tel:+13123714652";
 export const ZENPAWS_PHONE_SMS = "sms:+13123714652";
 

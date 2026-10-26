@@ -145,13 +145,17 @@ export function GuestHome() {
         </ul>
       </section>
 
-      <section className="flex items-center gap-3 rounded-[18px] p-4" style={{ backgroundColor: ZP.sunSoft }}>
+      <Link
+        href="/portal/account"
+        className="flex items-center gap-3 rounded-[18px] p-4"
+        style={{ backgroundColor: ZP.sunSoft }}
+      >
         <Sparkles className="h-6 w-6 shrink-0" style={{ color: ZP.sunInk }} aria-hidden="true" />
-        <p className="text-sm font-semibold" style={{ color: ZP.sunInk }}>
-          Already a client? Sign in to see your pets, upcoming visits and
-          messages, and to start a video visit.
-        </p>
-      </section>
+        <span className="text-sm font-semibold" style={{ color: ZP.sunInk }}>
+          <strong className="font-extrabold">Sign in or create an account</strong> to see your
+          pets, upcoming visits and messages, and to start a video visit.
+        </span>
+      </Link>
     </div>
   );
 }
