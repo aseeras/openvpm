@@ -47,9 +47,11 @@ const securityHeaders = [
     value: "max-age=63072000; includeSubDomains; preload",
   },
   {
+    // The house-call visit recorder uses this origin's own microphone (after
+    // the client consents); embedded third-party frames stay blocked.
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
   },
 ];
 

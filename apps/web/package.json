@@ -20,6 +20,7 @@
     "@ai-sdk/google-vertex": "^4.0.183",
     "@anthropic-ai/sdk": "^0.71.0",
     "@aws-sdk/client-s3": "^3.1105.0",
+    "@aws-sdk/client-transcribe": "^3.1105.0",
     "@aws-sdk/s3-request-presigner": "^3.1105.0",
     "@openpims/api": "workspace:*",
     "@openpims/db": "workspace:*",

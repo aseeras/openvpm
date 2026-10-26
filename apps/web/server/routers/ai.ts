@@ -19,6 +19,7 @@ import {
   clinicalRecordCorrections,
   invoices,
   practices,
+  visitRecordings,
 } from "@openpims/db";
 import type { Database } from "@openpims/db/client";
 import { AgentNotConfiguredError } from "@/lib/agent";
@@ -292,11 +293,45 @@ export const aiRouter = createRouter({
           "Visit context",
           SOAP_DRAFT_VISIT_CONTEXT_MAX_LENGTH,
         ),
+        /** Draft from this consented visit recording's transcript. */
+        recordingId: z.string().uuid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       await assertActivePractice(ctx);
       await assertPatientBelongsToPractice(ctx, input.patientId);
+
+      let transcript: string | undefined;
+      if (input.recordingId) {
+        const [recording] = await ctx.db
+          .select({
+            status: visitRecordings.status,
+            transcript: visitRecordings.transcript,
+          })
+          .from(visitRecordings)
+          .where(
+            and(
+              eq(visitRecordings.id, input.recordingId),
+              eq(visitRecordings.patientId, input.patientId),
+              eq(visitRecordings.practiceId, ctx.practiceId),
+              isNull(visitRecordings.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (!recording) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Recording not found",
+          });
+        }
+        if (recording.status !== "transcribed" || !recording.transcript) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This recording has no transcript to draft from.",
+          });
+        }
+        transcript = recording.transcript;
+      }
 
       const drafts = await rateLimit({
         key: `soap-draft:${ctx.practiceId}:actor:${ctx.user.id}`,
@@ -429,6 +464,7 @@ export const aiRouter = createRouter({
           activeProblems: problems,
           latestVitals: latestVitals ?? null,
           visitContext: input.visitContext,
+          transcript,
         });
         // Meter successful drafts like agent runs (no-op on self-host).
         await recordUsage({ practiceId: ctx.practiceId, kind: "ai_run" });

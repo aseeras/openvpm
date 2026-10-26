@@ -70,7 +70,7 @@ DECLARE
     'recent_clinical_items','recurring_series','rooms','services','sms_consent_events','sms_send_attempt_events','sms_send_attempts','sms_suppressions','soap_note_addenda','soap_note_replacements','soap_notes','staff_schedules','suppliers',
     'treatment_plans','treatment_templates','usage_records','users','vaccination_records',
     'visit_treatment_plan_presentations','visit_treatment_plan_response_lines','visit_treatment_plan_responses','visit_treatment_plan_revision_lines','visit_treatment_plan_revisions','visit_treatment_plans',
-    'visit_closeouts','visit_work_items','vital_signs','webhooks','wellness_enrollments','wellness_plans'
+    'visit_closeouts','visit_recording_consents','visit_recordings','visit_work_items','vital_signs','webhooks','wellness_enrollments','wellness_plans'
   ];
 BEGIN
   FOREACH t IN ARRAY tbls LOOP
@@ -141,6 +141,14 @@ GRANT SELECT, INSERT, UPDATE ON payment_processor_settlements,
 GRANT SELECT, INSERT ON financial_closes TO openpims_app;
 REVOKE ALL ON recent_clinical_items FROM openpims_app;
 GRANT SELECT, INSERT, UPDATE ON recent_clinical_items TO openpims_app;
+
+-- Visit-recording consent is append-only evidence of the client's answer.
+-- Recordings move through their transcription states in place but are never
+-- deleted; discarding one clears its transcript and removes the audio object.
+REVOKE ALL ON visit_recording_consents FROM openpims_app;
+GRANT SELECT, INSERT ON visit_recording_consents TO openpims_app;
+REVOKE ALL ON visit_recordings FROM openpims_app;
+GRANT SELECT, INSERT, UPDATE ON visit_recordings TO openpims_app;
 REVOKE ALL ON FUNCTION public.validate_payment_processor_refund_tenant()
   FROM PUBLIC, openpims_app;
 
@@ -655,7 +663,7 @@ BEGIN
   FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format(
-        'REVOKE ALL ON auth_email_attempts, auth_email_delivery_events, auth_email_provider_identity_conflicts, auth_email_webhook_conflicts, auth_tokens, backup_runs, clinic_pilot_events, clinic_pilots, clinical_record_corrections, demo_accesses, dispense_charge_queue, file_object_replicas, file_storage_events, financial_closes, funnel_events, lab_result_events, lab_result_replacements, messaging_registration_events, patient_allergies, patient_merge_events, payment_disputes, payment_processor_payouts, payment_processor_refunds, payment_processor_settlements, platform_email_identity, platform_email_identity_aliases, platform_email_preference_events, platform_email_preferences, practice_conversion_milestones, prescription_events, recent_clinical_items, sessions, sms_delivery_event_history, sms_delivery_events, sms_provider_event_conflict_reviews, sms_provider_event_conflicts, sms_provider_event_resolutions, sms_provider_events, sms_send_attempt_events, sms_send_attempts, stripe_events, verification_tokens FROM %I', r
+        'REVOKE ALL ON auth_email_attempts, auth_email_delivery_events, auth_email_provider_identity_conflicts, auth_email_webhook_conflicts, auth_tokens, backup_runs, clinic_pilot_events, clinic_pilots, clinical_record_corrections, demo_accesses, dispense_charge_queue, file_object_replicas, file_storage_events, financial_closes, funnel_events, lab_result_events, lab_result_replacements, messaging_registration_events, patient_allergies, patient_merge_events, payment_disputes, payment_processor_payouts, payment_processor_refunds, payment_processor_settlements, platform_email_identity, platform_email_identity_aliases, platform_email_preference_events, platform_email_preferences, practice_conversion_milestones, prescription_events, recent_clinical_items, sessions, sms_delivery_event_history, sms_delivery_events, sms_provider_event_conflict_reviews, sms_provider_event_conflicts, sms_provider_event_resolutions, sms_provider_events, sms_send_attempt_events, sms_send_attempts, stripe_events, verification_tokens, visit_recording_consents, visit_recordings FROM %I', r
       );
       EXECUTE format(
         'REVOKE ALL ON FUNCTION public.validate_payment_processor_refund_tenant() FROM %I', r

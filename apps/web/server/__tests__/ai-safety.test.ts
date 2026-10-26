@@ -80,6 +80,56 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+const RECORDING_ID = "00000000-0000-0000-0000-000000000005";
+
+describe("AI SOAP draft from a visit recording", () => {
+  it("refuses a recording from another patient or practice", async () => {
+    const { db } = createDb({
+      selectResults: [[{ id: PRACTICE_ID }], [{ id: PATIENT_ID }], []],
+    });
+    await expect(
+      callerWithDb(db).draftSoapNote({
+        patientId: PATIENT_ID,
+        recordingId: RECORDING_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: "Recording not found",
+    });
+  });
+
+  it("refuses a recording that has no transcript yet", async () => {
+    const { db } = createDb({
+      selectResults: [
+        [{ id: PRACTICE_ID }],
+        [{ id: PATIENT_ID }],
+        [{ status: "transcribing", transcript: null }],
+      ],
+    });
+    await expect(
+      callerWithDb(db).draftSoapNote({
+        patientId: PATIENT_ID,
+        recordingId: RECORDING_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "This recording has no transcript to draft from.",
+    });
+  });
+
+  it("checks the recording before any AI provider work", () => {
+    const source = readFileSync(
+      new URL("../routers/ai.ts", import.meta.url),
+      "utf8",
+    );
+    const handler = source.slice(source.indexOf("draftSoapNote:"));
+    const recordingIndex = handler.indexOf("from(visitRecordings)");
+    const lockIndex = handler.indexOf("lockPracticeForExternalSideEffects");
+    expect(recordingIndex).toBeGreaterThanOrEqual(0);
+    expect(lockIndex).toBeGreaterThan(recordingIndex);
+  });
+});
+
 describe("AI SOAP note safety", () => {
   it("rechecks hosted AI access under the practice lock before SOAP generation", () => {
     const source = readFileSync(

@@ -122,6 +122,11 @@ const bPatient = randomUUID();
 const aRecentClinicalItem = randomUUID();
 const bRecentClinicalItem = randomUUID();
 const crossTenantRecentClinicalItem = randomUUID();
+const aVisitRecordingConsent = randomUUID();
+const bVisitRecordingConsent = randomUUID();
+const aVisitRecording = randomUUID();
+const bVisitRecording = randomUUID();
+const mismatchedVisitRecording = randomUUID();
 const aFile = randomUUID();
 const bFile = randomUUID();
 const aReplica = randomUUID();
@@ -798,6 +803,141 @@ try {
   check(
     "application role cannot delete its own recent clinical items",
     recentClinicalDeleteBlocked,
+  );
+
+  // Visit recordings: consent is append-only evidence, and a recording must
+  // point at a consent given for the same visit in the same practice.
+  await owner`insert into visit_recording_consents
+    (id, practice_id, patient_id, appointment_id, action, signer_name,
+     disclosure_version, disclosure, actor_user_id, actor_name)
+    values (${bVisitRecordingConsent}, ${bId}, ${bPatient}, ${bSoapLegalAppointment},
+      'granted', 'Client B', 'v1', 'Disclosure B', ${bUser}, 'RLS Admin B')`;
+  await owner`insert into visit_recordings
+    (id, practice_id, patient_id, appointment_id, consent_id, created_by)
+    values (${bVisitRecording}, ${bId}, ${bPatient}, ${bSoapLegalAppointment},
+      ${bVisitRecordingConsent}, ${bUser})`;
+  const insertedVisitRecording = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    await tx`insert into visit_recording_consents
+      (id, practice_id, patient_id, appointment_id, action, signer_name,
+       disclosure_version, disclosure, actor_user_id, actor_name)
+      values (${aVisitRecordingConsent}, ${aId}, ${aPatient}, ${aSoapLegalAppointment},
+        'granted', 'Client A', 'v1', 'Disclosure A', ${aUser}, 'RLS Admin A')`;
+    return tx`insert into visit_recordings
+      (id, practice_id, patient_id, appointment_id, consent_id, created_by)
+      values (${aVisitRecording}, ${aId}, ${aPatient}, ${aSoapLegalAppointment},
+        ${aVisitRecordingConsent}, ${aUser})
+      returning id`;
+  });
+  check(
+    "tenant A can record consent and open a visit recording",
+    insertedVisitRecording.length === 1,
+  );
+
+  const tenantAVisitRecordings = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select r.id from visit_recordings r
+      join visit_recording_consents c on c.id = r.consent_id
+      where r.id in (${aVisitRecording}, ${bVisitRecording})`;
+  });
+  check(
+    "tenant A sees only its own visit recordings and consents",
+    tenantAVisitRecordings.length === 1 &&
+      tenantAVisitRecordings[0]!.id === aVisitRecording,
+  );
+
+  let crossTenantVisitConsentBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into visit_recording_consents
+        (practice_id, patient_id, appointment_id, action, signer_name,
+         disclosure_version, disclosure, actor_user_id, actor_name)
+        values (${bId}, ${bPatient}, ${bSoapLegalAppointment}, 'granted',
+          'Client B', 'v1', 'Disclosure B', ${bUser}, 'RLS Admin B')`;
+    });
+  } catch {
+    crossTenantVisitConsentBlocked = true;
+  }
+  check(
+    "tenant A cannot record consent for tenant B's visit",
+    crossTenantVisitConsentBlocked,
+  );
+
+  let visitConsentRewriteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update visit_recording_consents set action = 'declined'
+        where id = ${aVisitRecordingConsent}`;
+    });
+  } catch {
+    visitConsentRewriteBlocked = true;
+  }
+  check(
+    "application role cannot rewrite recorded visit consent",
+    visitConsentRewriteBlocked,
+  );
+
+  let visitConsentDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from visit_recording_consents
+        where id = ${aVisitRecordingConsent}`;
+    });
+  } catch {
+    visitConsentDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete recorded visit consent",
+    visitConsentDeleteBlocked,
+  );
+
+  let visitRecordingDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from visit_recordings where id = ${aVisitRecording}`;
+    });
+  } catch {
+    visitRecordingDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a visit recording row",
+    visitRecordingDeleteBlocked,
+  );
+
+  let mismatchedConsentBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into visit_recordings
+        (id, practice_id, patient_id, appointment_id, consent_id, created_by)
+        values (${mismatchedVisitRecording}, ${aId}, ${aPatient},
+          ${aSoapDraftFinalAppointment}, ${aVisitRecordingConsent}, ${aUser})`;
+    });
+  } catch {
+    mismatchedConsentBlocked = true;
+  }
+  check(
+    "a recording cannot reuse consent given for a different visit",
+    mismatchedConsentBlocked,
+  );
+
+  let transcriptWithoutTextBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update visit_recordings set status = 'transcribed'
+        where id = ${aVisitRecording}`;
+    });
+  } catch {
+    transcriptWithoutTextBlocked = true;
+  }
+  check(
+    "a recording cannot be marked transcribed without a transcript",
+    transcriptWithoutTextBlocked,
   );
 
   let correctedReplacementTransactionAllowed = false;
@@ -4764,6 +4904,10 @@ try {
     await cleanup`delete from migration_runs where id in (${aMigrationRun}, ${bMigrationRun})`;
     await cleanup`delete from recent_clinical_items
       where id in (${aRecentClinicalItem}, ${bRecentClinicalItem}, ${crossTenantRecentClinicalItem})`;
+    await cleanup`delete from visit_recordings
+      where id in (${aVisitRecording}, ${bVisitRecording}, ${mismatchedVisitRecording})`;
+    await cleanup`delete from visit_recording_consents
+      where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from appointments where id in (${aAppointment}, ${bAppointment}, ${aSoapLegalAppointment}, ${bSoapLegalAppointment}, ${aSoapDraftFinalAppointment}, ${aSoapDoubleFinalAppointment}, ${aSoapDiscardAppointment})`;
     await cleanup`delete from rooms where id in (${aRoom}, ${bRoom})`;
     await cleanup`delete from prescriptions where id in (${aPrescription}, ${bPrescription})`;
