@@ -44,15 +44,15 @@ with practice as (
   select l.id from locations l, practice p where l.practice_id = p.id order by l.created_at limit 1
 ), client as (
   insert into clients (practice_id, first_name, last_name, email, phone)
-  select p.id, 'Test', 'Family (demo)', 'demo-family@example.com', '(555) 010-0000' from practice p
+  select p.id, 'Margaret', 'Family (demo)', 'demo-family@example.com', '(555) 010-0000' from practice p
   returning id, practice_id
 ), rusty as (
-  insert into patients (practice_id, client_id, name, species, breed, sex, dob)
-  select c.practice_id, c.id, 'Rusty (demo)', 'canine', 'Golden Retriever', 'male_neutered', date '2014-04-01' from client c
+  insert into patients (practice_id, client_id, name, species, breed, sex, dob, photo_url)
+  select c.practice_id, c.id, 'Rusty (demo)', 'canine', 'Golden Retriever', 'male_neutered', date '2014-04-01', '/demo/rusty.jpg' from client c
   returning id, practice_id, client_id
 ), pepper as (
-  insert into patients (practice_id, client_id, name, species, breed, sex, dob)
-  select c.practice_id, c.id, 'Pepper (demo)', 'canine', 'Dachshund', 'female_spayed', date '2016-09-15' from client c
+  insert into patients (practice_id, client_id, name, species, breed, sex, dob, photo_url)
+  select c.practice_id, c.id, 'Pepper (demo)', 'canine', 'Dachshund', 'female_spayed', date '2016-09-15', '/demo/pepper.jpg' from client c
   returning id
 ), past_visit as (
   -- A completed in-person visit makes Rusty an established patient.
@@ -70,11 +70,19 @@ with practice as (
          'Demo: follow-up acupuncture house call'
   from rusty r
   returning id
+), next_visit as (
+  -- An upcoming acupuncture house call, for the home screen's "Coming up".
+  insert into appointments (practice_id, location_id, client_id, patient_id, doctor_id, start_time, end_time, status, origin, notes)
+  select r.practice_id, (select id from loc), r.client_id, r.id, (select id from vet),
+         date_trunc('day', now()) + interval '4 days 15 hours', date_trunc('day', now()) + interval '4 days 15 hours 45 minutes', 'scheduled', 'field',
+         'Demo: follow-up acupuncture'
+  from rusty r
+  returning id
 )
-select (select id from client), (select id from house_call), (select id from past_visit);
+select (select id from client), (select id from house_call), (select id from past_visit), (select id from next_visit);
 SQL
 
-IFS='|' read -r CLIENT_ID HOUSE_CALL_ID PAST_VISIT_ID < /tmp/zp-demo-ids
+IFS='|' read -r CLIENT_ID HOUSE_CALL_ID PAST_VISIT_ID _NEXT_VISIT_ID < /tmp/zp-demo-ids
 rm -f /tmp/zp-demo-ids
 
 # House-call screens need the ambulatory workspace switched on for the practice.
@@ -87,7 +95,7 @@ fi
 cat <<MSG
 
 Demo family created:
-  Client:    Test Family (demo)       $APP/clients/$CLIENT_ID
+  Client:    Margaret Family (demo)       $APP/clients/$CLIENT_ID
   Rusty:     established (completed visit 30 days ago) -> can request video visits
   Pepper:    no visits yet -> shown greyed out for video visits
   House call in exam today for Rusty -> try "Record this visit":

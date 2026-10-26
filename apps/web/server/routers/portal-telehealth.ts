@@ -12,7 +12,13 @@ import {
   sql,
 } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { clients, patients, practices, telehealthVisits } from "@openpims/db";
+import {
+  clients,
+  patients,
+  practices,
+  telehealthVisits,
+  users,
+} from "@openpims/db";
 import type { Database } from "@openpims/db/client";
 import { createRouter, portalProcedure } from "../trpc";
 import { rateLimit } from "@/lib/rate-limit";
@@ -87,6 +93,7 @@ async function practiceVideoState(db: Database, practiceId: string) {
   const [practice] = await db
     .select({
       name: practices.name,
+      logoUrl: practices.logoUrl,
       settings: practices.settings,
       tier: practices.subscriptionTier,
       billingStatus: practices.billingStatus,
@@ -107,6 +114,7 @@ async function practiceVideoState(db: Database, practiceId: string) {
     );
   return {
     name: practice.name,
+    logoUrl: practice.logoUrl,
     configured: telehealthVideoConfigured() && subscribed,
     accepting: telehealthSettings(practice.settings).accepting,
   };
@@ -124,9 +132,13 @@ async function openVisitForClient(
       createdAt: telehealthVisits.createdAt,
       patientId: telehealthVisits.patientId,
       patientName: patients.name,
+      patientPhotoUrl: patients.photoUrl,
+      startedAt: telehealthVisits.startedAt,
+      clinicianName: users.name,
     })
     .from(telehealthVisits)
     .innerJoin(patients, eq(patients.id, telehealthVisits.patientId))
+    .leftJoin(users, eq(users.id, telehealthVisits.clinicianId))
     .where(
       and(
         eq(telehealthVisits.practiceId, client.practiceId),
@@ -155,6 +167,8 @@ export const portalTelehealthRouter = createRouter({
         id: patients.id,
         name: patients.name,
         species: patients.species,
+        breed: patients.breed,
+        photoUrl: patients.photoUrl,
         established: sql<boolean>`${establishedPatientPredicate(client.practiceId, patients.id)}`,
       })
       .from(patients)
@@ -193,9 +207,16 @@ export const portalTelehealthRouter = createRouter({
             id: telehealthVisits.id,
             status: telehealthVisits.status,
             declineReason: telehealthVisits.declineReason,
+            reason: telehealthVisits.reason,
+            startedAt: telehealthVisits.startedAt,
             endedAt: telehealthVisits.endedAt,
+            patientName: patients.name,
+            patientPhotoUrl: patients.photoUrl,
+            clinicianName: users.name,
           })
           .from(telehealthVisits)
+          .innerJoin(patients, eq(patients.id, telehealthVisits.patientId))
+          .leftJoin(users, eq(users.id, telehealthVisits.clinicianId))
           .where(
             and(
               eq(telehealthVisits.practiceId, client.practiceId),
@@ -213,6 +234,7 @@ export const portalTelehealthRouter = createRouter({
 
     return {
       practiceName: practice.name,
+      practiceLogoUrl: practice.logoUrl,
       lastClosed: lastClosed ?? null,
       configured: practice.configured,
       accepting: practice.accepting,

@@ -15,6 +15,10 @@ export type TelehealthReason = (typeof TELEHEALTH_REASONS)[number];
 
 export const TELEHEALTH_NOTES_MAX_LENGTH = 1000;
 
+/** Shown on the request screen (ZenPaws telehealth recheck price list). */
+export const TELEHEALTH_VISIT_LABEL = "Telehealth recheck · 15 min";
+export const TELEHEALTH_FEE_LABEL = "$45–$60";
+
 /** How often the waiting room and the clinician queue refresh. */
 export const TELEHEALTH_POLL_INTERVAL_MS = 4000;
 
