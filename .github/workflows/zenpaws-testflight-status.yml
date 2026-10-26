@@ -1,0 +1,23 @@
+# Reports the TestFlight processing and testing state of the latest ZenPaws
+# client app builds (see the run summary), using the same App Store Connect
+# API key secrets as the upload workflow.
+name: ZenPaws TestFlight status
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read TestFlight status
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: node mobile/zenpaws-client/scripts/testflight-status.mjs

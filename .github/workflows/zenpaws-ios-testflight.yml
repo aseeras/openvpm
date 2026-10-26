@@ -11,7 +11,8 @@ on:
     branches: [zenpaws]
     paths:
       - "mobile/zenpaws-client/**"
-      - ".github/workflows/zenpaws-ios-testflight.yml"
+      - "!mobile/zenpaws-client/scripts/**"
+      - "!mobile/zenpaws-client/README.md"
 
 concurrency:
   group: zenpaws-ios-testflight
