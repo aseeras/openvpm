@@ -60,7 +60,15 @@ sudo -u openvpm -H bash -c 'set -a; . /etc/openvpm.env; set +a; export NODE_ENV=
 SA=/opt/openvpm/apps/web/.next/standalone
 rm -rf "$SA/apps/web/public" "$SA/apps/web/.next/static"
 cp -r /opt/openvpm/apps/web/public "$SA/apps/web/public"
-cp -r /opt/openvpm/apps/web/.next/static "$SA/apps/web/.next/static"
+# Keep the previous builds' scripts and styles for two weeks: a page a phone
+# or browser saved before this update still asks for them, and without them
+# it shows up unstyled. Their file names are content hashes, so they never clash.
+STATIC_ARCHIVE=/var/lib/zenpaws/next-static
+mkdir -p "$STATIC_ARCHIVE"
+cp -rn /opt/openvpm/apps/web/.next/static/. "$STATIC_ARCHIVE/"
+find "$STATIC_ARCHIVE" -type f -mtime +14 -delete
+cp -r "$STATIC_ARCHIVE" "$SA/apps/web/.next/static"
+cp -r /opt/openvpm/apps/web/.next/static/. "$SA/apps/web/.next/static/"
 chown -R openvpm:openvpm "$SA"
 
 systemctl restart openvpm
