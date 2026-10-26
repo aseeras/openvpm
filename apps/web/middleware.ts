@@ -17,6 +17,8 @@ const CAPABILITY_PATH_PREFIXES = [
 ];
 
 const PUBLIC_PATH_PREFIXES = [
+  // Apple fetches app-link verification here without a session.
+  "/.well-known",
   "/accept-invite",
   "/api",
   "/api-docs",
