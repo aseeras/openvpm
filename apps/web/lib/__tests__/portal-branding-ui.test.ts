@@ -48,4 +48,15 @@ describe("portal branding UI", () => {
     expect(shell).toContain('aria-current={active ? "page" : undefined}');
     expect(home).toContain("alt={`${data.practice.name} logo`}");
   });
+
+  it("lets visitors look around before signing in", () => {
+    const guestHome = readFileSync("components/portal/guest-home.tsx", "utf8");
+    expect(home).toContain('error?.data?.code === "UNAUTHORIZED"');
+    expect(home).toContain("<GuestHome />");
+    expect(shell).toContain('client.error?.data?.code === "UNAUTHORIZED"');
+    expect(shell).toContain('isGuest && pathname !== "/portal"');
+    expect(shell).toContain("<SignInCard");
+    expect(guestHome).toContain("ZENPAWS_SERVICES");
+    expect(guestHome).toContain("Book a house call");
+  });
 });

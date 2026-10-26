@@ -7,6 +7,7 @@ import { CalendarDays, Home, PawPrint, UserRound } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { hexToHslString } from "@/lib/utils";
 import { ZP } from "@/lib/portal/zenpaws-theme";
+import { SignInCard } from "@/components/portal/sign-in-card";
 
 type PortalThemeStyle = CSSProperties & {
   "--primary"?: string;
@@ -29,6 +30,17 @@ const TABS = [
     match: (p: string) => p.startsWith("/portal/account") || p.startsWith("/portal/messages") || p.startsWith("/portal/invoices"),
   },
 ] as const;
+
+function guestSignInReason(pathname: string): string {
+  if (pathname.startsWith("/portal/video")) {
+    return "Video visits are for pets we've already seen in person.";
+  }
+  if (pathname.startsWith("/portal/pets")) return "Your pets' records are private to you.";
+  if (pathname.startsWith("/portal/appointments") || pathname.startsWith("/portal/book")) {
+    return "Your visits and bookings are private to you.";
+  }
+  return "Your account is private to you.";
+}
 
 /**
  * The client app frame: a phone-width column on the ZenPaws light-blue
@@ -53,9 +65,14 @@ export function PortalShell({
     color: ZP.ink,
     ...(accent ? { "--primary": accent, "--ring": accent } : {}),
   };
+  // Visitors without a session can look around first; only the home screen
+  // is open to them and everything else asks them to sign in.
+  const isGuest = !isAccessExchange && client.error?.data?.code === "UNAUTHORIZED";
+  const guestGated = isGuest && pathname !== "/portal";
   // The video visit flow is full-screen with its own footer, like the design.
   const showTabs =
-    Boolean(client.data) && !isAccessExchange && !pathname.startsWith("/portal/video");
+    isGuest ||
+    (Boolean(client.data) && !isAccessExchange && !pathname.startsWith("/portal/video"));
 
   return (
     <div className={`min-h-screen ${fontClassName ?? ""}`} style={themeStyle}>
@@ -63,7 +80,7 @@ export function PortalShell({
         id="main-content"
         className={`mx-auto w-full max-w-md px-5 pt-6 ${showTabs ? "pb-28" : "pb-10"}`}
       >
-        {children}
+        {guestGated ? <SignInCard reason={guestSignInReason(pathname)} /> : children}
       </main>
       {showTabs ? (
         <nav
