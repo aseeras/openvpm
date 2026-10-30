@@ -2,14 +2,18 @@ import { and, eq, isNull } from "drizzle-orm";
 import { portalSignInIdentities } from "@openpims/db";
 import { createRouter, portalProcedure, publicProcedure } from "../trpc";
 import { appleSignInEnabled } from "@/lib/portal/apple-sign-in";
+import { webSignInOptions } from "@/lib/portal/web-sso";
 
 /**
  * Sign-in options for the client app. Linking itself goes through
  * /api/portal/apple, which needs the one-time nonce cookie.
  */
 export const portalSignInRouter = createRouter({
-  /** Whether the server accepts Sign in with Apple at all (no session needed). */
-  options: publicProcedure.query(() => ({ apple: appleSignInEnabled() })),
+  /**
+   * Which sign-in providers the server accepts (no session needed): `apple`
+   * for the iPhone app's native sheet, `web` for the browser redirect flow.
+   */
+  options: publicProcedure.query(() => ({ apple: appleSignInEnabled(), web: webSignInOptions() })),
 
   /** Whether this client has an Apple ID connected. */
   status: portalProcedure.query(async ({ ctx }) => {

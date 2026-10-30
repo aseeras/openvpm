@@ -1,23 +1,32 @@
-import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import {
+  claimIsTrue,
+  ID_TOKEN_MAX_LENGTH,
+  IdTokenError,
+  jwksFetcher,
+  tokenEmail,
+  verifyIdToken,
+  type RsaJwk,
+} from "./id-token";
 
 /**
  * Sign in with Apple for the client portal. The iPhone app asks Apple for an
- * identity token (a JWT Apple signs) and posts it here; we check Apple's
- * signature, that it was issued for our app, that it is fresh, and that it
- * carries the one-time nonce we handed out, then trust its `sub` (a stable
- * per-app Apple user id).
+ * identity token (a JWT Apple signs) and posts it here; on the web, Apple
+ * posts one back to /api/portal/sso/apple/callback. We check Apple's
+ * signature, that it was issued for our app or website, that it is fresh,
+ * and that it carries the one-time nonce we handed out, then trust its `sub`
+ * (a stable Apple user id, the same for every app and site of one developer
+ * team).
  */
 
 const APPLE_ISSUER = "https://appleid.apple.com";
 const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
-const KEY_CACHE_MS = 60 * 60 * 1000;
-const CLOCK_SKEW_SECONDS = 60;
 
 export const APPLE_NONCE_COOKIE = "zp_apple_nonce";
 export const APPLE_NONCE_TTL_SECONDS = 10 * 60;
-export const APPLE_IDENTITY_TOKEN_MAX_LENGTH = 8192;
+export const APPLE_IDENTITY_TOKEN_MAX_LENGTH = ID_TOKEN_MAX_LENGTH;
 
-export type AppleJwk = { kty: string; kid: string; alg?: string; n: string; e: string };
+export type AppleJwk = RsaJwk;
 export type AppleIdentity = {
   subject: string;
   email: string | null;
@@ -25,7 +34,7 @@ export type AppleIdentity = {
   privateRelayEmail: boolean;
 };
 
-export class AppleTokenError extends Error {}
+export { IdTokenError as AppleTokenError };
 
 /** Bundle ids (or Services ids) allowed as the token audience; empty = off. */
 export function appleSignInClientIds(): string[] {
@@ -39,41 +48,17 @@ export function appleSignInEnabled(): boolean {
   return appleSignInClientIds().length > 0;
 }
 
+/** The Services ID that Sign in with Apple on the website runs under; null = off. */
+export function appleWebServicesId(): string | null {
+  const id = process.env.APPLE_SIGN_IN_WEB_SERVICES_ID?.trim();
+  return id && /^[A-Za-z0-9.-]{3,255}$/.test(id) ? id : null;
+}
+
 export function generateAppleNonce(): string {
   return randomBytes(24).toString("hex");
 }
 
-let cachedKeys: { keys: AppleJwk[]; fetchedAt: number } | null = null;
-
-async function fetchAppleKeys(force = false): Promise<AppleJwk[]> {
-  if (!force && cachedKeys && Date.now() - cachedKeys.fetchedAt < KEY_CACHE_MS) {
-    return cachedKeys.keys;
-  }
-  const response = await fetch(APPLE_KEYS_URL, { cache: "no-store" });
-  if (!response.ok) throw new AppleTokenError("Could not reach Apple");
-  const body = (await response.json()) as { keys?: AppleJwk[] };
-  const keys = Array.isArray(body.keys) ? body.keys : [];
-  cachedKeys = { keys, fetchedAt: Date.now() };
-  return keys;
-}
-
-function decodeSegment(segment: string): Record<string, unknown> {
-  try {
-    return JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as Record<string, unknown>;
-  } catch {
-    throw new AppleTokenError("Malformed token");
-  }
-}
-
-function sameString(a: string, b: string): boolean {
-  const left = createHash("sha256").update(a).digest();
-  const right = createHash("sha256").update(b).digest();
-  return timingSafeEqual(left, right);
-}
-
-function claimIsTrue(value: unknown): boolean {
-  return value === true || value === "true";
-}
+const getAppleKeys = jwksFetcher(APPLE_KEYS_URL);
 
 export async function verifyAppleIdentityToken(
   token: string,
@@ -84,53 +69,16 @@ export async function verifyAppleIdentityToken(
     getKeys?: (force: boolean) => Promise<AppleJwk[]>;
   },
 ): Promise<AppleIdentity> {
-  const parts = token.split(".");
-  if (parts.length !== 3 || token.length > APPLE_IDENTITY_TOKEN_MAX_LENGTH) {
-    throw new AppleTokenError("Malformed token");
-  }
-  const [headerPart, payloadPart, signaturePart] = parts as [string, string, string];
-  const header = decodeSegment(headerPart);
-  if (header.alg !== "RS256" || typeof header.kid !== "string") {
-    throw new AppleTokenError("Unsupported token");
-  }
-
-  const getKeys = options.getKeys ?? fetchAppleKeys;
-  let jwk = (await getKeys(false)).find((key) => key.kid === header.kid);
-  // Apple rotates keys; refresh once if the token names one we don't have.
-  if (!jwk) jwk = (await getKeys(true)).find((key) => key.kid === header.kid);
-  if (!jwk || jwk.kty !== "RSA") throw new AppleTokenError("Unknown signing key");
-
-  const publicKey = createPublicKey({ key: { kty: "RSA", n: jwk.n, e: jwk.e }, format: "jwk" });
-  const signed = verify(
-    "RSA-SHA256",
-    Buffer.from(`${headerPart}.${payloadPart}`),
-    publicKey,
-    Buffer.from(signaturePart, "base64url"),
-  );
-  if (!signed) throw new AppleTokenError("Bad signature");
-
-  const claims = decodeSegment(payloadPart);
-  const nowSeconds = Math.floor((options.now ?? new Date()).getTime() / 1000);
-  if (claims.iss !== APPLE_ISSUER) throw new AppleTokenError("Wrong issuer");
-  if (typeof claims.aud !== "string" || !options.audiences.includes(claims.aud)) {
-    throw new AppleTokenError("Wrong audience");
-  }
-  if (typeof claims.exp !== "number" || claims.exp + CLOCK_SKEW_SECONDS < nowSeconds) {
-    throw new AppleTokenError("Expired token");
-  }
-  if (typeof claims.iat === "number" && claims.iat - CLOCK_SKEW_SECONDS > nowSeconds) {
-    throw new AppleTokenError("Token from the future");
-  }
-  if (typeof claims.nonce !== "string" || !sameString(claims.nonce, options.nonce)) {
-    throw new AppleTokenError("Nonce mismatch");
-  }
-  if (typeof claims.sub !== "string" || claims.sub.length === 0 || claims.sub.length > 255) {
-    throw new AppleTokenError("Missing subject");
-  }
-
-  const email = typeof claims.email === "string" && claims.email.length <= 320 ? claims.email : null;
+  const { subject, claims } = await verifyIdToken(token, {
+    issuers: [APPLE_ISSUER],
+    audiences: options.audiences,
+    nonce: options.nonce,
+    now: options.now,
+    getKeys: options.getKeys ?? getAppleKeys,
+  });
+  const email = tokenEmail(claims);
   return {
-    subject: claims.sub,
+    subject,
     email,
     emailVerified: Boolean(email) && claimIsTrue(claims.email_verified),
     privateRelayEmail: claimIsTrue(claims.is_private_email),
