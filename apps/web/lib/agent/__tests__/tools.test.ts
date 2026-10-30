@@ -215,7 +215,7 @@ describe("agent tool input bounds", () => {
     const query = findClient.zod.safeParse({ query: "  Ada  " });
     expect(query.success).toBe(true);
     if (!query.success) throw new Error("expected query parse to succeed");
-    expect(query.data.query).toBe("Ada");
+    expect((query.data as { query: string }).query).toBe("Ada");
 
     expect(
       findClient.zod.safeParse({

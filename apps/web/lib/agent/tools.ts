@@ -357,7 +357,7 @@ const getPatientSummary: AgentTool = {
     properties: { patientId: { type: "string", description: "Patient UUID" } },
     required: ["patientId"],
   },
-  zod: z.object({ patientId: z.string().uuid() }),
+  zod: z.object({ patientId: z.string().guid() }),
   readOnly: true,
   async execute(args, ctx) {
     const { patientId } = this.zod.parse(args) as { patientId: string };
@@ -553,11 +553,11 @@ const bookAppointment: AgentTool = {
     .object({
       startTime: z.string().datetime({ offset: true }),
       endTime: z.string().datetime({ offset: true }),
-      clientId: z.string().uuid().optional(),
-      patientId: z.string().uuid().optional(),
-      doctorId: z.string().uuid().optional(),
-      roomId: z.string().uuid().optional(),
-      locationId: z.string().uuid().optional(),
+      clientId: z.string().guid().optional(),
+      patientId: z.string().guid().optional(),
+      doctorId: z.string().guid().optional(),
+      roomId: z.string().guid().optional(),
+      locationId: z.string().guid().optional(),
       notes: agentOptionalNotesInput,
     })
     .refine((b) => new Date(b.endTime) > new Date(b.startTime), {
@@ -769,7 +769,7 @@ const listTreatmentPlans: AgentTool = {
     properties: { patientId: { type: "string", description: "Patient UUID" } },
     required: ["patientId"],
   },
-  zod: z.object({ patientId: z.string().uuid() }),
+  zod: z.object({ patientId: z.string().guid() }),
   readOnly: true,
   async execute(args, ctx) {
     const { patientId } = this.zod.parse(args) as { patientId: string };
@@ -832,7 +832,7 @@ const recordVitalSigns: AgentTool = {
     required: ["patientId"],
   },
   zod: z.object({
-    patientId: z.string().uuid(),
+    patientId: z.string().guid(),
     temperatureC: vitalTemperatureInput.optional(),
     heartRateBpm: z.number().int().min(0).max(400).optional(),
     respiratoryRateBpm: z.number().int().min(0).max(300).optional(),
@@ -899,9 +899,9 @@ const findOpenSlotsTool: AgentTool = {
   zod: z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     durationMinutes: z.number().int().min(10).max(240).optional(),
-    doctorId: z.string().uuid().optional(),
-    roomId: z.string().uuid().optional(),
-    locationId: z.string().uuid().optional(),
+    doctorId: z.string().guid().optional(),
+    roomId: z.string().guid().optional(),
+    locationId: z.string().guid().optional(),
   }),
   readOnly: true,
   async execute(args, ctx) {

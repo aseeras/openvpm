@@ -174,7 +174,7 @@ export const telehealthRouter = createRouter({
   /** Admit the client: open a private room and return the clinician's link. */
   start: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       if (visit.status !== "waiting") {
@@ -227,7 +227,7 @@ export const telehealthRouter = createRouter({
   /** A fresh connection back into a visit that is still in progress. */
   rejoin: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       if (visit.status !== "in_call" || !isVideoChannel(visit.videoRoomName)) {
@@ -251,7 +251,7 @@ export const telehealthRouter = createRouter({
   /** Finish the visit and close its channel so nobody can rejoin it. */
   end: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       if (visit.status !== "in_call") return { status: visit.status };
@@ -275,7 +275,7 @@ export const telehealthRouter = createRouter({
   /** Ask the client, in their app, to agree to a transcript of this call. */
   requestTranscript: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       if (visit.status !== "in_call") {
@@ -304,7 +304,7 @@ export const telehealthRouter = createRouter({
   /** Stop transcribing (or withdraw the request) during the call. */
   stopTranscript: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       if (visit.transcriptStatus === "requested") {
@@ -331,7 +331,7 @@ export const telehealthRouter = createRouter({
    */
   syncTranscript: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const visit = await lockVisit(ctx, input.visitId);
       const fail = async (message: string) => {
@@ -397,7 +397,7 @@ export const telehealthRouter = createRouter({
   /** One visit's transcript and the client's consent, for the clinician. */
   transcript: protectedProcedure
     .use(requireRole(...CLINICIAN_ROLES))
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .query(async ({ ctx, input }) => {
       const [visit] = await ctx.db
         .select({
@@ -446,7 +446,7 @@ export const telehealthRouter = createRouter({
     .use(requireRole(...CLINICIAN_ROLES))
     .input(
       z.object({
-        visitId: z.string().uuid(),
+        visitId: z.string().guid(),
         reason: z.string().trim().max(300).optional(),
       }),
     )

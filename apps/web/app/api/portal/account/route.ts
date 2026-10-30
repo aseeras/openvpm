@@ -65,7 +65,7 @@ const input = z.discriminatedUnion("action", [
       }),
     password: authPasswordInput,
   }),
-  z.object({ action: z.literal("verify_sign_up"), codeId: z.string().uuid(), code }),
+  z.object({ action: z.literal("verify_sign_up"), codeId: z.string().guid(), code }),
   z.object({
     action: z.literal("sign_in"),
     login: z.string().trim().min(1).max(255),
@@ -74,7 +74,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("forgot"), email }),
   z.object({
     action: z.literal("reset"),
-    codeId: z.string().uuid(),
+    codeId: z.string().guid(),
     code,
     password: authPasswordInput,
   }),
