@@ -600,6 +600,32 @@ export async function sendVerificationEmailWithProviderEvidence(
   });
 }
 
+export async function sendPortalEmailCode(data: {
+  to: string;
+  practiceName: string;
+  code: string;
+  purpose: "sign_up" | "reset";
+}): Promise<{ success: boolean }> {
+  const intro =
+    data.purpose === "sign_up"
+      ? `Use this code to finish creating your ${data.practiceName} account.`
+      : `Use this code to reset your ${data.practiceName} password.`;
+  const body = `
+    <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">${intro}</p>
+    <p style="margin:0 0 24px;color:#0f172a;font-size:32px;font-weight:700;letter-spacing:0.3em;">${data.code}</p>
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">The code expires in 15 minutes. If you didn't ask for it, you can ignore this email.</p>
+  `;
+  const result = await sendEmail({
+    to: data.to,
+    subject:
+      data.purpose === "sign_up"
+        ? `Your ${data.practiceName} sign-up code: ${data.code}`
+        : `Your ${data.practiceName} password reset code: ${data.code}`,
+    html: emailLayout(data.practiceName, body),
+  });
+  return { success: result.success };
+}
+
 export async function sendPasswordResetEmail(data: {
   to: string;
   name: string;

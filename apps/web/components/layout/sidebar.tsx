@@ -27,6 +27,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Video,
 } from "lucide-react";
 import { PawMark } from "@/components/brand/paw-mark";
 
@@ -69,6 +70,12 @@ const navItems: {
   { href: "/billing", label: "Billing", icon: Receipt, roles: allRoles },
   { href: "/inventory", label: "Inventory", icon: Package, roles: allRoles },
   { href: "/inbox", label: "Inbox", icon: MessageSquare, roles: allRoles },
+  {
+    href: "/telehealth",
+    label: "Video visits",
+    icon: Video,
+    roles: ["admin", "veterinarian", "technician", "front_desk"],
+  },
   {
     href: "/recalls",
     label: "Recalls",

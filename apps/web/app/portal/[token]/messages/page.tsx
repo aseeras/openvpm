@@ -13,6 +13,16 @@ export default function PortalMessagesPage() {
   const [content, setContent] = useState("");
   const utils = trpc.useUtils();
 
+  // Shortcuts from the home screen start a message for the client to finish.
+  useEffect(() => {
+    const topic = new URLSearchParams(window.location.search).get("topic");
+    if (topic === "refill") {
+      setContent("Hi, I'd like to request a prescription refill for ");
+    } else if (topic === "new-pet") {
+      setContent("Hi, I'd like to add a new pet. Name, species, breed and age: ");
+    }
+  }, []);
+
   const { data, isLoading, error } = trpc.portal.getMessages.useQuery(
     {},
     { refetchInterval: 30000 }

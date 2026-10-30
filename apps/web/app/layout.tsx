@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, DM_Sans } from "next/font/google";
 import { Providers } from "@/lib/providers";
 import "@/styles/globals.css";
@@ -18,8 +18,20 @@ export const metadata: Metadata = {
   description:
     "The first modern, open-source, API-first practice management system built for the veterinary community. Beautiful, fast, and free.",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/favicon-48.png", type: "image/png", sizes: "48x48" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
+  // Lets iPhone/iPad "Add to Home Screen" open the app full screen.
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "ZenPaws",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#12305B",
 };
 
 export default function RootLayout({

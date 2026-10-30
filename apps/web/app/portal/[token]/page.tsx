@@ -3,148 +3,254 @@
 import Link from "next/link";
 import {
   AlertCircle,
-  CalendarPlus,
+  Bell,
+  ChevronRight,
+  FileText,
+  Home as HomeIcon,
   MessageSquare,
-  PawPrint,
+  Pill,
+  Video,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { PATIENT_SPECIES_EMOJI } from "@/lib/patients/species";
-import { EmptyState } from "@/components/common/empty-state";
 import { calculatePortalAge } from "@/lib/portal/date";
+import { portalLogo, ZP } from "@/lib/portal/zenpaws-theme";
+import { PetAvatar } from "@/components/portal/pet-avatar";
+import { GuestHome } from "@/components/portal/guest-home";
 
-const speciesEmoji: Record<string, string> = PATIENT_SPECIES_EMOJI;
+const UPCOMING_STATUSES = new Set(["scheduled", "confirmed", "checked_in"]);
+
+function speciesLabel(species: string | null, breed: string | null): string {
+  if (breed) return breed.split(/[\s/]/)[0] ?? breed;
+  if (!species) return "";
+  return species === "canine" ? "Dog" : species === "feline" ? "Cat" : species.charAt(0).toUpperCase() + species.slice(1);
+}
 
 export default function PortalHomePage() {
-  const { data, isLoading, error } = trpc.portal.getClient.useQuery({});
+  const { data, isLoading, error } = trpc.portal.getClient.useQuery({}, { retry: false });
+  const video = trpc.portalTelehealth.status.useQuery(undefined, {
+    enabled: Boolean(data),
+    refetchInterval: 30_000,
+  });
+  const appointments = trpc.portal.getAppointments.useQuery({}, { enabled: Boolean(data) });
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="max-w-xl">
-        <EmptyState
-          className="py-12"
-          icon={AlertCircle}
-          title="Unable to load portal"
-          description="This portal link is invalid or has expired. Please contact your veterinary clinic for a new link."
+      <div className="flex items-center justify-center py-24">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
+          style={{ borderColor: ZP.accent, borderTopColor: "transparent" }}
         />
       </div>
     );
   }
 
-  return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome, {data.firstName}!
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Here is everything about your pets in one place.
-        </p>
-      </div>
+  // No session yet: show what ZenPaws offers instead of a sign-in wall.
+  if (error?.data?.code === "UNAUTHORIZED") {
+    return <GuestHome />;
+  }
 
-      {/* Pet Cards */}
-      <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Your Pets</h2>
-        {data.patients.length === 0 ? (
-          <EmptyState
-            className="py-10"
-            icon={PawPrint}
-            title="No pets on file yet"
-            description="Your clinic will add pets here when they create patient records."
+  if (error || !data) {
+    return (
+      <section className="mt-16 rounded-3xl border bg-white p-7 text-center" style={{ borderColor: ZP.border }}>
+        <AlertCircle className="mx-auto h-8 w-8" style={{ color: ZP.accent }} aria-hidden="true" />
+        <h1 className="mt-3 text-xl font-black">Sign in to ZenPaws</h1>
+        <p className="mt-2 text-sm" style={{ color: ZP.muted }}>
+          We couldn&apos;t open your account just now. Please try again.
+        </p>
+        <Link
+          href="/portal/account"
+          className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full font-extrabold text-white"
+          style={{ backgroundColor: ZP.accent }}
+        >
+          Sign in
+        </Link>
+      </section>
+    );
+  }
+
+  const now = Date.now();
+  const nextVisit = (appointments.data ?? [])
+    .filter((a) => UPCOMING_STATUSES.has(a.status) && new Date(a.startTime).getTime() > now - 60 * 60 * 1000)
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())[0];
+  const accepting = video.data?.configured && video.data.accepting;
+  const inWaitingRoom = video.data?.visit;
+
+  return (
+    <div className="space-y-5">
+      {/* Greeting */}
+      <header className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={portalLogo(data.practice.logoUrl)}
+            alt={`${data.practice.name} logo`}
+            className="h-12 w-12 rounded-2xl border bg-white object-cover"
+            style={{ borderColor: ZP.border }}
           />
+          <div>
+            <p className="text-[13px] font-extrabold uppercase tracking-[0.12em]">{data.practice.name}</p>
+            <h1 className="text-[26px] font-black leading-tight">Hi, {data.firstName}</h1>
+          </div>
+        </div>
+        <Link
+          href="/portal/messages"
+          aria-label="Messages"
+          className="flex h-11 w-11 items-center justify-center rounded-full border bg-white"
+          style={{ borderColor: ZP.border }}
+        >
+          <Bell className="h-5 w-5" aria-hidden="true" />
+        </Link>
+      </header>
+
+      {/* Video visit */}
+      <section className="space-y-3.5 rounded-3xl p-5 text-white" style={{ backgroundColor: ZP.accent }}>
+        <div className="flex items-center gap-3">
+          <div className="relative h-[52px] w-[52px] shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={portalLogo(data.practice.logoUrl)}
+              alt=""
+              className="h-[52px] w-[52px] rounded-full border-2 border-white bg-white object-cover"
+            />
+            {accepting ? (
+              <span
+                className="absolute bottom-0.5 right-0 h-3.5 w-3.5 rounded-full border-2"
+                style={{ backgroundColor: "#2FB36B", borderColor: ZP.accent }}
+              />
+            ) : null}
+          </div>
+          <div>
+            <p className="text-lg font-extrabold">Video visit with the veterinarian</p>
+            <p className="text-sm font-semibold text-[#DCEEFC]">
+              {inWaitingRoom
+                ? inWaitingRoom.status === "in_call"
+                  ? "Your visit is in progress"
+                  : "You're in the waiting room"
+                : accepting
+                  ? "Available now"
+                  : "Not available right now"}
+            </p>
+          </div>
+        </div>
+        <p className="text-sm leading-relaxed text-[#EAF5FE]">
+          Quick rechecks, medication questions and acupuncture follow-ups from
+          your couch. For established {data.practice.name} patients.
+        </p>
+        <Link
+          href="/portal/video"
+          className="flex h-[50px] items-center justify-center gap-2 rounded-full font-extrabold"
+          style={{ backgroundColor: ZP.sun, color: ZP.ink }}
+        >
+          <Video className="h-5 w-5" aria-hidden="true" />
+          {inWaitingRoom ? "Return to your visit" : "Start a video visit"}
+        </Link>
+      </section>
+
+      {/* Quick actions */}
+      <section className="grid grid-cols-4 gap-2.5" aria-label="Quick actions">
+        {[
+          { href: "/portal/book", label: "House call", icon: HomeIcon, tint: ZP.sunSoft },
+          { href: "/portal/messages", label: "Message", icon: MessageSquare, tint: ZP.chip },
+          { href: "/portal/messages?topic=refill", label: "Refills", icon: Pill, tint: ZP.chip },
+          { href: "/portal/pets", label: "Records", icon: FileText, tint: ZP.chip },
+        ].map((action) => (
+          <Link
+            key={action.label}
+            href={action.href}
+            className="flex flex-col items-center gap-2 rounded-[18px] border bg-white px-1 py-3"
+            style={{ borderColor: ZP.border }}
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: action.tint }}>
+              <action.icon className="h-[22px] w-[22px]" aria-hidden="true" />
+            </span>
+            <span className="text-center text-xs font-bold leading-tight">{action.label}</span>
+          </Link>
+        ))}
+      </section>
+
+      {/* Pets */}
+      <section className="space-y-2.5">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-lg font-extrabold">My pets</h2>
+          <Link href="/portal/messages?topic=new-pet" className="text-sm font-bold" style={{ color: ZP.accent }}>
+            Add a pet
+          </Link>
+        </div>
+        {data.patients.length === 0 ? (
+          <p className="rounded-[18px] border bg-white p-4 text-sm" style={{ borderColor: ZP.border, color: ZP.muted }}>
+            Your pets will appear here once the clinic adds them.
+          </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2.5">
             {data.patients.map((pet) => (
               <Link
                 key={pet.id}
                 href={`/portal/pets/${pet.id}`}
-                className="block rounded-xl border border-gray-200 p-5 transition-all hover:border-primary/60 hover:shadow-md"
+                className="flex items-center gap-2.5 rounded-[18px] border bg-white p-2.5"
+                style={{ borderColor: ZP.border }}
               >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xl">
-                    {speciesEmoji[pet.species] || "🐾"}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">
-                      {pet.name}
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      {pet.breed || pet.species}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {calculatePortalAge(pet.dob)}
-                    </p>
-                  </div>
-                </div>
+                <PetAvatar name={pet.name} photoUrl={pet.photoUrl} />
+                <span className="min-w-0">
+                  <span className="block truncate text-base font-extrabold">{pet.name}</span>
+                  <span className="block truncate text-xs font-semibold" style={{ color: ZP.muted }}>
+                    {[speciesLabel(pet.species, pet.breed), pet.dob ? calculatePortalAge(pet.dob) : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
               </Link>
             ))}
           </div>
         )}
       </section>
 
-      {/* Request Appointment */}
-      <section className="mb-10">
-        <Link
-          href="/portal/book"
-          className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/40 p-4 font-medium text-primary transition-all hover:border-primary/60 hover:bg-primary/5"
-        >
-          <CalendarPlus className="h-5 w-5" aria-hidden="true" />
-          Request an Appointment
-        </Link>
-      </section>
-
-      {/* Quick Links */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Quick Links</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Link
-            href="/portal/messages"
-            className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 transition-all hover:border-primary/60 hover:shadow-sm"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <MessageSquare className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="font-medium text-gray-900">Messages</p>
-              <p className="text-sm text-gray-500">Read and reply to your clinic</p>
-            </div>
-          </Link>
+      {/* Coming up */}
+      <section className="space-y-2.5">
+        <h2 className="text-lg font-extrabold">Coming up</h2>
+        {nextVisit ? (
           <Link
             href="/portal/appointments"
-            className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 transition-all hover:border-primary/60 hover:shadow-sm"
+            className="flex items-center gap-3 rounded-[18px] p-3.5"
+            style={{ backgroundColor: ZP.sunSoft }}
           >
-            <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium text-gray-900">Appointments</p>
-              <p className="text-sm text-gray-500">View upcoming and past visits</p>
-            </div>
+            <span className="flex h-14 w-[52px] shrink-0 flex-col items-center justify-center rounded-[14px] bg-white">
+              <span className="text-[11px] font-extrabold tracking-wide text-[#B3261E]">
+                {new Date(nextVisit.startTime)
+                  .toLocaleDateString("en-US", { weekday: "short", timeZone: nextVisit.timezone ?? undefined })
+                  .toUpperCase()}
+              </span>
+              <span className="text-[22px] font-black leading-none">
+                {new Date(nextVisit.startTime).toLocaleDateString("en-US", {
+                  day: "numeric",
+                  timeZone: nextVisit.timezone ?? undefined,
+                })}
+              </span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-extrabold">
+                {nextVisit.typeName ?? "Visit"} · {nextVisit.patientName}
+              </span>
+              <span className="block truncate text-[13px] font-semibold" style={{ color: ZP.sunInk }}>
+                {new Date(nextVisit.startTime).toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: nextVisit.timezone ?? undefined,
+                })}
+                {nextVisit.locationName ? ` · ${nextVisit.locationName}` : ""}
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0" style={{ color: ZP.sunInk }} aria-hidden="true" />
           </Link>
+        ) : (
           <Link
-            href="/portal/invoices"
-            className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 transition-all hover:border-primary/60 hover:shadow-sm"
+            href="/portal/book"
+            className="flex items-center justify-between rounded-[18px] border bg-white p-4 text-sm font-bold"
+            style={{ borderColor: ZP.border }}
           >
-            <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center text-green-600">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium text-gray-900">Invoices</p>
-              <p className="text-sm text-gray-500">View billing and payments</p>
-            </div>
+            Nothing booked yet. Book a house call
+            <ChevronRight className="h-5 w-5" aria-hidden="true" />
           </Link>
-        </div>
+        )}
       </section>
     </div>
   );

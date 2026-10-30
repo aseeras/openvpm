@@ -6,15 +6,13 @@ function source(path: string): string {
 }
 
 describe("portal empty states", () => {
-  it("uses shared empty states on the portal home and invoice pages", () => {
+  it("uses shared empty states on the portal invoice and message pages", () => {
     const home = source("app/portal/[token]/page.tsx");
     const invoices = source("app/portal/[token]/invoices/page.tsx");
     const messages = source("app/portal/[token]/messages/page.tsx");
 
-    expect(home).toContain(
-      'import { EmptyState } from "@/components/common/empty-state"',
-    );
-    expect(home).toContain('title="No pets on file yet"');
+    // The ZenPaws home screen has its own empty states in the app style.
+    expect(home).toContain("Your pets will appear here once the clinic adds them.");
     expect(home).toContain('href="/portal/messages"');
     expect(invoices).toContain(
       'import { EmptyState } from "@/components/common/empty-state"',
@@ -33,14 +31,15 @@ describe("portal empty states", () => {
     const messages = source("app/portal/[token]/messages/page.tsx");
     const petDetail = source("app/portal/[token]/pets/[petId]/page.tsx");
 
-    for (const page of [home, appointments, invoices, messages, petDetail]) {
+    for (const page of [appointments, invoices, messages, petDetail]) {
       expect(page).toContain("AlertCircle");
       expect(page).toContain("<EmptyState");
       expect(page).not.toContain('className="text-center py-20"');
     }
 
-    expect(home).toContain('title="Unable to load portal"');
-    expect(home).toContain("This portal link is invalid or has expired.");
+    // Home shows the ZenPaws sign-in prompt with the clinic's number.
+    expect(home).toContain("AlertCircle");
+    expect(home).toContain("Sign in to ZenPaws");
     expect(home).toContain("if (error || !data)");
     expect(home).not.toContain("if (!data) return null");
     expect(appointments).toContain('title="Unable to load appointments"');

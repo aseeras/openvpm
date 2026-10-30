@@ -19,6 +19,10 @@ import {
 } from "@/lib/records/soap-content";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { useUnsavedChangesGuard } from "@/lib/use-unsaved-changes-guard";
+import {
+  VisitRecorder,
+  type RecorderSoapDraft,
+} from "@/components/records/visit-recorder";
 
 type SoapSections = {
   subjective: string;
@@ -169,6 +173,29 @@ export function AmbulatorySoapCard({
     onError: (error) => toast.error(error.message),
   });
 
+  /**
+   * Put an AI draft from a visit recording into the editor. Empty sections
+   * take the draft as-is; text the clinician already wrote is kept and the
+   * draft is added below it, so nothing typed is lost.
+   */
+  function applyRecordingDraft(draft: RecorderSoapDraft) {
+    setSections((current) => {
+      const next = { ...current };
+      for (const field of SECTION_FIELDS) {
+        const addition = draft[field.name].trim();
+        if (!addition) continue;
+        const existing = current[field.name].trim();
+        next[field.name] = (
+          existing
+            ? `${existing}\n\n--- AI draft from visit recording ---\n${addition}`
+            : addition
+        ).slice(0, SOAP_SECTION_MAX_LENGTH);
+      }
+      return next;
+    });
+    setDirty(true);
+  }
+
   const hasContent = Object.values(sections).some(
     (value) => value.trim().length > 0,
   );
@@ -255,6 +282,12 @@ export function AmbulatorySoapCard({
                 the server confirms them.
               </div>
             ) : null}
+            <VisitRecorder
+              patientId={patientId}
+              appointmentId={appointmentId}
+              visitOpen={visitOpen && isOnline}
+              onDraft={applyRecordingDraft}
+            />
             <div className="grid gap-4 lg:grid-cols-2">
               {SECTION_FIELDS.map((field) => (
                 <label key={field.name} className="space-y-1.5">

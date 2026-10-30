@@ -1,0 +1,2 @@
+# The iPhone app builds with npm ci, which needs its lockfile.
+!package-lock.json

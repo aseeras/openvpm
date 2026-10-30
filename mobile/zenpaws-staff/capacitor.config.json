@@ -1,0 +1,23 @@
+{
+  "appId": "com.zenpawsdvm.staff",
+  "appName": "ZenPaws VPM",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.zenpawsdvm.com/",
+    "allowNavigation": [
+      "app.zenpawsdvm.com"
+    ],
+    "errorPath": "offline.html"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FFFFFF"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#123A5C",
+      "showSpinner": false
+    }
+  }
+}

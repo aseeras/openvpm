@@ -1,3 +1,33 @@
+// Video visits are direct WebRTC calls between browsers. The only extra host
+// the page talks to is the clinic's Amazon Kinesis Video Streams signaling
+// endpoint in its own region; media flows peer to peer (or through Amazon's
+// TURN relay), which the content security policy does not govern. These
+// values are read when the app is built, so rebuild after changing them.
+// Read each setting by its literal name: the middleware runtime only
+// exposes environment variables referenced this way.
+const trim = (value) => (value || "").trim();
+const videoRegion =
+  trim(process.env.TELEHEALTH_VIDEO) === "aws_kvs"
+    ? trim(process.env.TELEHEALTH_VIDEO_REGION) ||
+      trim(process.env.VISIT_RECORDING_TRANSCRIBE_REGION) ||
+      trim(process.env.S3_REGION)
+    : "";
+const videoEnabled = /^[a-z0-9-]{4,32}$/.test(videoRegion);
+// A local stand-in for the signaling service, used only by tests.
+const videoTestOrigin = (() => {
+  try {
+    const url = new URL(trim(process.env.KVS_ENDPOINT));
+    return `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`;
+  } catch {
+    return null;
+  }
+})();
+const videoConnectHosts = videoEnabled
+  ? [`wss://*.kinesisvideo.${videoRegion}.amazonaws.com`, videoTestOrigin]
+      .filter(Boolean)
+      .join(" ")
+  : null;
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -14,7 +44,12 @@ const contentSecurityPolicy = [
   ]
     .filter(Boolean)
     .join(" "),
-  "connect-src 'self' https://app.openvpm.com https://vitals.vercel-insights.com https://va.vercel-scripts.com",
+  [
+    "connect-src 'self' https://app.openvpm.com https://vitals.vercel-insights.com https://va.vercel-scripts.com",
+    videoConnectHosts,
+  ]
+    .filter(Boolean)
+    .join(" "),
   "worker-src 'self' blob:",
   process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : null,
 ]
@@ -47,9 +82,18 @@ const securityHeaders = [
     value: "max-age=63072000; includeSubDomains; preload",
   },
   {
+    // The house-call visit recorder and video visits use this origin's own
+    // camera and microphone (after the person allows it); embedded
+    // third-party frames stay blocked.
     key: "Permissions-Policy",
-    value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    value: [
+      videoEnabled ? "camera=(self)" : "camera=()",
+      "microphone=(self)",
+      "geolocation=()",
+      "payment=()",
+      "usb=()",
+      "interest-cohort=()",
+    ].join(", "),
   },
 ];
 

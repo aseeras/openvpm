@@ -122,6 +122,18 @@ const bPatient = randomUUID();
 const aRecentClinicalItem = randomUUID();
 const bRecentClinicalItem = randomUUID();
 const crossTenantRecentClinicalItem = randomUUID();
+const aVisitRecordingConsent = randomUUID();
+const bVisitRecordingConsent = randomUUID();
+const aVisitRecording = randomUUID();
+const bVisitRecording = randomUUID();
+const mismatchedVisitRecording = randomUUID();
+const aTelehealthVisit = randomUUID();
+const bTelehealthVisit = randomUUID();
+const aSignInIdentity = randomUUID();
+const aTranscriptConsent = randomUUID();
+const bSignInIdentity = randomUUID();
+const aPortalAccount = randomUUID();
+const bPortalAccount = randomUUID();
 const aFile = randomUUID();
 const bFile = randomUUID();
 const aReplica = randomUUID();
@@ -798,6 +810,470 @@ try {
   check(
     "application role cannot delete its own recent clinical items",
     recentClinicalDeleteBlocked,
+  );
+
+  // Visit recordings: consent is append-only evidence, and a recording must
+  // point at a consent given for the same visit in the same practice.
+  await owner`insert into visit_recording_consents
+    (id, practice_id, patient_id, appointment_id, action, signer_name,
+     disclosure_version, disclosure, actor_user_id, actor_name)
+    values (${bVisitRecordingConsent}, ${bId}, ${bPatient}, ${bSoapLegalAppointment},
+      'granted', 'Client B', 'v1', 'Disclosure B', ${bUser}, 'RLS Admin B')`;
+  await owner`insert into visit_recordings
+    (id, practice_id, patient_id, appointment_id, consent_id, created_by)
+    values (${bVisitRecording}, ${bId}, ${bPatient}, ${bSoapLegalAppointment},
+      ${bVisitRecordingConsent}, ${bUser})`;
+  const insertedVisitRecording = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    await tx`insert into visit_recording_consents
+      (id, practice_id, patient_id, appointment_id, action, signer_name,
+       disclosure_version, disclosure, actor_user_id, actor_name)
+      values (${aVisitRecordingConsent}, ${aId}, ${aPatient}, ${aSoapLegalAppointment},
+        'granted', 'Client A', 'v1', 'Disclosure A', ${aUser}, 'RLS Admin A')`;
+    return tx`insert into visit_recordings
+      (id, practice_id, patient_id, appointment_id, consent_id, created_by)
+      values (${aVisitRecording}, ${aId}, ${aPatient}, ${aSoapLegalAppointment},
+        ${aVisitRecordingConsent}, ${aUser})
+      returning id`;
+  });
+  check(
+    "tenant A can record consent and open a visit recording",
+    insertedVisitRecording.length === 1,
+  );
+
+  const tenantAVisitRecordings = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select r.id from visit_recordings r
+      join visit_recording_consents c on c.id = r.consent_id
+      where r.id in (${aVisitRecording}, ${bVisitRecording})`;
+  });
+  check(
+    "tenant A sees only its own visit recordings and consents",
+    tenantAVisitRecordings.length === 1 &&
+      tenantAVisitRecordings[0]!.id === aVisitRecording,
+  );
+
+  let crossTenantVisitConsentBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into visit_recording_consents
+        (practice_id, patient_id, appointment_id, action, signer_name,
+         disclosure_version, disclosure, actor_user_id, actor_name)
+        values (${bId}, ${bPatient}, ${bSoapLegalAppointment}, 'granted',
+          'Client B', 'v1', 'Disclosure B', ${bUser}, 'RLS Admin B')`;
+    });
+  } catch {
+    crossTenantVisitConsentBlocked = true;
+  }
+  check(
+    "tenant A cannot record consent for tenant B's visit",
+    crossTenantVisitConsentBlocked,
+  );
+
+  let visitConsentRewriteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update visit_recording_consents set action = 'declined'
+        where id = ${aVisitRecordingConsent}`;
+    });
+  } catch {
+    visitConsentRewriteBlocked = true;
+  }
+  check(
+    "application role cannot rewrite recorded visit consent",
+    visitConsentRewriteBlocked,
+  );
+
+  let visitConsentDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from visit_recording_consents
+        where id = ${aVisitRecordingConsent}`;
+    });
+  } catch {
+    visitConsentDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete recorded visit consent",
+    visitConsentDeleteBlocked,
+  );
+
+  let visitRecordingDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from visit_recordings where id = ${aVisitRecording}`;
+    });
+  } catch {
+    visitRecordingDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a visit recording row",
+    visitRecordingDeleteBlocked,
+  );
+
+  let mismatchedConsentBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into visit_recordings
+        (id, practice_id, patient_id, appointment_id, consent_id, created_by)
+        values (${mismatchedVisitRecording}, ${aId}, ${aPatient},
+          ${aSoapDraftFinalAppointment}, ${aVisitRecordingConsent}, ${aUser})`;
+    });
+  } catch {
+    mismatchedConsentBlocked = true;
+  }
+  check(
+    "a recording cannot reuse consent given for a different visit",
+    mismatchedConsentBlocked,
+  );
+
+  let transcriptWithoutTextBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update visit_recordings set status = 'transcribed'
+        where id = ${aVisitRecording}`;
+    });
+  } catch {
+    transcriptWithoutTextBlocked = true;
+  }
+  check(
+    "a recording cannot be marked transcribed without a transcript",
+    transcriptWithoutTextBlocked,
+  );
+
+  // Video visits: tenant-scoped, the pet must belong to the requesting client,
+  // one open visit per pet, and rows are never deleted.
+  await owner`insert into telehealth_visits
+    (id, practice_id, client_id, patient_id, reason)
+    values (${bTelehealthVisit}, ${bId}, ${bClient}, ${bPatient}, 'Medication question')`;
+  const insertedTelehealthVisit = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into telehealth_visits
+      (id, practice_id, client_id, patient_id, reason)
+      values (${aTelehealthVisit}, ${aId}, ${aClient}, ${aPatient}, 'Stiffness or mobility')
+      returning id`;
+  });
+  check(
+    "tenant A can open a video visit for its own client's pet",
+    insertedTelehealthVisit.length === 1,
+  );
+
+  const tenantATelehealthVisits = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from telehealth_visits
+      where id in (${aTelehealthVisit}, ${bTelehealthVisit})`;
+  });
+  check(
+    "tenant A sees only its own video visits",
+    tenantATelehealthVisits.length === 1 &&
+      tenantATelehealthVisits[0]!.id === aTelehealthVisit,
+  );
+
+  let foreignPetVisitBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into telehealth_visits
+        (practice_id, client_id, patient_id, reason)
+        values (${aId}, ${bClient}, ${aPatient}, 'Something else')`;
+    });
+  } catch {
+    foreignPetVisitBlocked = true;
+  }
+  check(
+    "a video visit cannot pair a pet with another client",
+    foreignPetVisitBlocked,
+  );
+
+  let secondOpenVisitBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into telehealth_visits
+        (practice_id, client_id, patient_id, reason)
+        values (${aId}, ${aClient}, ${aPatient}, 'Something else')`;
+    });
+  } catch {
+    secondOpenVisitBlocked = true;
+  }
+  check(
+    "a pet can have only one open video visit",
+    secondOpenVisitBlocked,
+  );
+
+  let callWithoutRoomBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update telehealth_visits set status = 'in_call'
+        where id = ${aTelehealthVisit}`;
+    });
+  } catch {
+    callWithoutRoomBlocked = true;
+  }
+  check(
+    "a video visit cannot be in a call without a clinician and room",
+    callWithoutRoomBlocked,
+  );
+
+  let telehealthDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from telehealth_visits where id = ${aTelehealthVisit}`;
+    });
+  } catch {
+    telehealthDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a video visit",
+    telehealthDeleteBlocked,
+  );
+
+  // Transcript consent for a video visit: tenant-scoped, bound to the
+  // visit's own client, append-only.
+  const insertedTranscriptConsent = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into telehealth_transcript_consents
+      (id, practice_id, visit_id, client_id, action, signer_name, disclosure_version, disclosure)
+      values (${aTranscriptConsent}, ${aId}, ${aTelehealthVisit}, ${aClient}, 'granted', 'Client A', 'v1', 'Transcript disclosure')
+      returning id`;
+  });
+  check(
+    "tenant A can record a client's transcript consent",
+    insertedTranscriptConsent.length === 1,
+  );
+
+  let wrongClientConsentBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into telehealth_transcript_consents
+        (practice_id, visit_id, client_id, action, signer_name, disclosure_version, disclosure)
+        values (${aId}, ${aTelehealthVisit}, ${bClient}, 'granted', 'Someone else', 'v1', 'Transcript disclosure')`;
+    });
+  } catch {
+    wrongClientConsentBlocked = true;
+  }
+  check(
+    "transcript consent must come from the visit's own client",
+    wrongClientConsentBlocked,
+  );
+
+  const tenantBConsents = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${bId}, true)`;
+    return tx`select id from telehealth_transcript_consents where id = ${aTranscriptConsent}`;
+  });
+  check(
+    "tenant B cannot see tenant A's transcript consents",
+    tenantBConsents.length === 0,
+  );
+
+  let consentEditBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update telehealth_transcript_consents set action = 'declined' where id = ${aTranscriptConsent}`;
+    });
+  } catch {
+    consentEditBlocked = true;
+  }
+  check(
+    "application role cannot change a transcript consent",
+    consentEditBlocked,
+  );
+
+  let readyWithoutTranscriptBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`update telehealth_visits set transcript_status = 'ready' where id = ${aTelehealthVisit}`;
+    });
+  } catch {
+    readyWithoutTranscriptBlocked = true;
+  }
+  check(
+    "a video visit cannot be marked transcript-ready without a transcript",
+    readyWithoutTranscriptBlocked,
+  );
+
+  // Portal sign-in links (Sign in with Apple): tenant-scoped, bound to a
+  // client of the same practice, one active link per account, no deletes.
+  await owner`insert into portal_sign_in_identities
+    (id, practice_id, client_id, provider, subject)
+    values (${bSignInIdentity}, ${bId}, ${bClient}, 'apple', 'rls-apple-subject')`;
+  const insertedSignInIdentity = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into portal_sign_in_identities
+      (id, practice_id, client_id, provider, subject)
+      values (${aSignInIdentity}, ${aId}, ${aClient}, 'apple', 'rls-apple-subject')
+      returning id`;
+  });
+  check(
+    "tenant A can link a sign-in to its own client",
+    insertedSignInIdentity.length === 1,
+  );
+
+  const tenantASignInIdentities = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from portal_sign_in_identities
+      where id in (${aSignInIdentity}, ${bSignInIdentity})`;
+  });
+  check(
+    "tenant A sees only its own sign-in links",
+    tenantASignInIdentities.length === 1 &&
+      tenantASignInIdentities[0]!.id === aSignInIdentity,
+  );
+
+  let foreignClientSignInBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_sign_in_identities
+        (practice_id, client_id, provider, subject)
+        values (${aId}, ${bClient}, 'apple', 'rls-other-subject')`;
+    });
+  } catch {
+    foreignClientSignInBlocked = true;
+  }
+  check(
+    "a sign-in link cannot point at another practice's client",
+    foreignClientSignInBlocked,
+  );
+
+  let duplicateSignInBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_sign_in_identities
+        (practice_id, client_id, provider, subject)
+        values (${aId}, ${aClient}, 'apple', 'rls-apple-subject')`;
+    });
+  } catch {
+    duplicateSignInBlocked = true;
+  }
+  check(
+    "an Apple account links to only one client per practice",
+    duplicateSignInBlocked,
+  );
+
+  let signInDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from portal_sign_in_identities where id = ${aSignInIdentity}`;
+    });
+  } catch {
+    signInDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a sign-in link",
+    signInDeleteBlocked,
+  );
+
+  // Client portal accounts: tenant-scoped, bound to a client of the same
+  // practice, usernames unique across the server, no deletes.
+  await owner`insert into portal_accounts
+    (id, practice_id, client_id, username, password_hash)
+    values (${bPortalAccount}, ${bId}, ${bClient}, 'rls-b-user', 'x')`;
+  const insertedPortalAccount = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`insert into portal_accounts
+      (id, practice_id, client_id, username, password_hash)
+      values (${aPortalAccount}, ${aId}, ${aClient}, 'rls-a-user', 'x')
+      returning id`;
+  });
+  check(
+    "tenant A can create a portal account for its own client",
+    insertedPortalAccount.length === 1,
+  );
+
+  const tenantAPortalAccounts = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from portal_accounts
+      where id in (${aPortalAccount}, ${bPortalAccount})`;
+  });
+  check(
+    "tenant A sees only its own portal accounts",
+    tenantAPortalAccounts.length === 1 &&
+      tenantAPortalAccounts[0]!.id === aPortalAccount,
+  );
+
+  let foreignClientAccountBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_accounts
+        (practice_id, client_id, username, password_hash)
+        values (${aId}, ${bClient}, 'rls-other-user', 'x')`;
+    });
+  } catch {
+    foreignClientAccountBlocked = true;
+  }
+  check(
+    "a portal account cannot point at another practice's client",
+    foreignClientAccountBlocked,
+  );
+
+  let duplicateUsernameBlocked = false;
+  try {
+    await owner`insert into portal_accounts
+      (practice_id, client_id, username, password_hash)
+      values (${bId}, ${bClient}, 'rls-a-user', 'x')`;
+  } catch {
+    duplicateUsernameBlocked = true;
+  }
+  check(
+    "a username is unique across practices",
+    duplicateUsernameBlocked,
+  );
+
+  let portalAccountDeleteBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`delete from portal_accounts where id = ${aPortalAccount}`;
+    });
+  } catch {
+    portalAccountDeleteBlocked = true;
+  }
+  check(
+    "application role cannot delete a portal account",
+    portalAccountDeleteBlocked,
+  );
+
+  await owner`insert into portal_email_codes
+    (practice_id, purpose, email, code_hash, expires_at)
+    values (${bId}, 'sign_up', 'rls-b@example.com', 'x', now())`;
+  const tenantACodes = await appTransaction(async (tx) => {
+    await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+    return tx`select id from portal_email_codes where practice_id = ${bId}`;
+  });
+  check(
+    "tenant A cannot read another practice's email codes",
+    tenantACodes.length === 0,
+  );
+
+  let foreignCodeBlocked = false;
+  try {
+    await appTransaction(async (tx) => {
+      await tx`select set_config('app.current_practice_id', ${aId}, true)`;
+      await tx`insert into portal_email_codes
+        (practice_id, purpose, email, code_hash, expires_at)
+        values (${bId}, 'sign_up', 'rls-x@example.com', 'x', now())`;
+    });
+  } catch {
+    foreignCodeBlocked = true;
+  }
+  check(
+    "tenant A cannot write another practice's email codes",
+    foreignCodeBlocked,
   );
 
   let correctedReplacementTransactionAllowed = false;
@@ -4764,6 +5240,20 @@ try {
     await cleanup`delete from migration_runs where id in (${aMigrationRun}, ${bMigrationRun})`;
     await cleanup`delete from recent_clinical_items
       where id in (${aRecentClinicalItem}, ${bRecentClinicalItem}, ${crossTenantRecentClinicalItem})`;
+    await cleanup`delete from visit_recordings
+      where id in (${aVisitRecording}, ${bVisitRecording}, ${mismatchedVisitRecording})`;
+    await cleanup`delete from visit_recording_consents
+      where practice_id in (${aId}, ${bId})`;
+    await cleanup`delete from portal_accounts
+      where id in (${aPortalAccount}, ${bPortalAccount})`;
+    await cleanup`delete from portal_email_codes
+      where practice_id in (${aId}, ${bId})`;
+    await cleanup`delete from portal_sign_in_identities
+      where id in (${aSignInIdentity}, ${bSignInIdentity})`;
+    await cleanup`delete from telehealth_transcript_consents
+      where practice_id in (${aId}, ${bId})`;
+    await cleanup`delete from telehealth_visits
+      where practice_id in (${aId}, ${bId})`;
     await cleanup`delete from appointments where id in (${aAppointment}, ${bAppointment}, ${aSoapLegalAppointment}, ${bSoapLegalAppointment}, ${aSoapDraftFinalAppointment}, ${aSoapDoubleFinalAppointment}, ${aSoapDiscardAppointment})`;
     await cleanup`delete from rooms where id in (${aRoom}, ${bRoom})`;
     await cleanup`delete from prescriptions where id in (${aPrescription}, ${bPrescription})`;
