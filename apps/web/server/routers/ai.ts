@@ -212,8 +212,8 @@ export const aiRouter = createRouter({
     .use(requireRole("admin", "veterinarian"))
     .input(
       z.object({
-        patientId: z.string().uuid(),
-        appointmentId: z.string().uuid(),
+        patientId: z.string().guid(),
+        appointmentId: z.string().guid(),
         subjective: optionalClinicalTextInput(
           "SOAP subjective",
           SOAP_SECTION_MAX_LENGTH,
@@ -289,15 +289,15 @@ export const aiRouter = createRouter({
     .use(requireFeature("agent"))
     .input(
       z.object({
-        patientId: z.string().uuid(),
+        patientId: z.string().guid(),
         visitContext: optionalClinicalTextInput(
           "Visit context",
           SOAP_DRAFT_VISIT_CONTEXT_MAX_LENGTH,
         ),
         /** Draft from this consented visit recording's transcript. */
-        recordingId: z.string().uuid().optional(),
+        recordingId: z.string().guid().optional(),
         /** Draft from this video visit's consented transcript. */
-        telehealthVisitId: z.string().uuid().optional(),
+        telehealthVisitId: z.string().guid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

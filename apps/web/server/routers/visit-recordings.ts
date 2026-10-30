@@ -135,8 +135,8 @@ export const visitRecordingsRouter = createRouter({
     .use(requireRole(...RECORDING_ROLES))
     .input(
       z.object({
-        patientId: z.string().uuid(),
-        appointmentId: z.string().uuid(),
+        patientId: z.string().guid(),
+        appointmentId: z.string().guid(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -190,8 +190,8 @@ export const visitRecordingsRouter = createRouter({
     .use(requireRole(...RECORDING_ROLES))
     .input(
       z.object({
-        patientId: z.string().uuid(),
-        appointmentId: z.string().uuid(),
+        patientId: z.string().guid(),
+        appointmentId: z.string().guid(),
         signerName: z.string().trim().min(1).max(255),
         granted: z.boolean(),
         disclosureVersion: z.literal(VISIT_RECORDING_DISCLOSURE_VERSION),
@@ -231,8 +231,8 @@ export const visitRecordingsRouter = createRouter({
     .use(requireRole(...RECORDING_ROLES))
     .input(
       z.object({
-        patientId: z.string().uuid(),
-        appointmentId: z.string().uuid(),
+        patientId: z.string().guid(),
+        appointmentId: z.string().guid(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -292,7 +292,7 @@ export const visitRecordingsRouter = createRouter({
    */
   sync: protectedProcedure
     .use(requireRole(...RECORDING_ROLES))
-    .input(z.object({ recordingId: z.string().uuid() }))
+    .input(z.object({ recordingId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const recording = await lockRecording(ctx, input.recordingId);
       if (
@@ -352,7 +352,7 @@ export const visitRecordingsRouter = createRouter({
   /** Delete the audio (if any) and the transcript. The row stays as history. */
   discard: protectedProcedure
     .use(requireRole(...RECORDING_ROLES))
-    .input(z.object({ recordingId: z.string().uuid() }))
+    .input(z.object({ recordingId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const recording = await lockRecording(ctx, input.recordingId);
       if (recording.status === "discarded") return summarize(recording);

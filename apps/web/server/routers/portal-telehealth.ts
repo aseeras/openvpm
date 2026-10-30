@@ -270,7 +270,7 @@ export const portalTelehealthRouter = createRouter({
 
   /** The client's answer to the veterinarian's transcript request. */
   answerTranscript: portalProcedure
-    .input(z.object({ visitId: z.string().uuid(), allow: z.boolean() }))
+    .input(z.object({ visitId: z.string().guid(), allow: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       await limit(`portal-telehealth-transcript:${ctx.portalSessionId}`, 20, 60 * 60 * 1000);
       const client = await sessionClient(ctx);
@@ -332,7 +332,7 @@ export const portalTelehealthRouter = createRouter({
 
   /** The client can stop the transcript at any time during the call. */
   stopTranscript: portalProcedure
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const client = await sessionClient(ctx);
       const [visit] = await ctx.db
@@ -366,7 +366,7 @@ export const portalTelehealthRouter = createRouter({
   request: portalProcedure
     .input(
       z.object({
-        patientId: z.string().uuid(),
+        patientId: z.string().guid(),
         reason: z.enum(TELEHEALTH_REASONS),
         notes: z.string().trim().max(TELEHEALTH_NOTES_MAX_LENGTH).optional(),
       }),
@@ -439,7 +439,7 @@ export const portalTelehealthRouter = createRouter({
 
   /** Once the clinician has started the call, get this client's pass in. */
   join: portalProcedure
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       await limit(
         `portal-telehealth-join:${ctx.portalSessionId}`,
@@ -490,7 +490,7 @@ export const portalTelehealthRouter = createRouter({
 
   /** Leave the waiting room before the visit starts. */
   cancel: portalProcedure
-    .input(z.object({ visitId: z.string().uuid() }))
+    .input(z.object({ visitId: z.string().guid() }))
     .mutation(async ({ ctx, input }) => {
       const client = await sessionClient(ctx);
       const [visit] = await ctx.db
