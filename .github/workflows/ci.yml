@@ -199,6 +199,15 @@ jobs:
           TEMPLATE_CATALOG_DB_INTEGRATION: "1"
         run: pnpm --filter @openpims/web exec vitest run server/__tests__/template-catalog-search.integration.test.ts
 
+      # Video visits run as openpims_app through both the clinic and client
+      # routers: the waiting room, starting and ending a call, transcript
+      # consent, who may run the call, and that each visit stays with its own
+      # client and practice. The video service itself is stubbed.
+      - name: Execute video visit contract
+        env:
+          TELEHEALTH_DB_INTEGRATION: "1"
+        run: pnpm --filter @openpims/web exec vitest run server/__tests__/telehealth-visits.integration.test.ts
+
       # Steven Dennis exposed a real route-level patient merge 500 caused by
       # changing isolation inside a nested savepoint. Exercise the protected
       # router as openpims_app and prove the event is written in the outer
