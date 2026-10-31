@@ -221,6 +221,7 @@ type PracticeInfoForm = {
   address: string;
   phone: string;
   email: string;
+  inboxAlertEmail: string;
   website: string;
   timezone: string;
   country: ClinicRegionCode | "";
@@ -555,6 +556,7 @@ function PracticeInfoTab() {
     practiceForm.address.trim().length <= SETTINGS_ADDRESS_MAX_LENGTH &&
     practiceForm.phone.trim().length <= SETTINGS_PHONE_MAX_LENGTH &&
     isOptionalSettingsEmailValid(practiceForm.email) &&
+    isOptionalSettingsEmailValid(practiceForm.inboxAlertEmail) &&
     practiceForm.website.trim().length <= SETTINGS_WEBSITE_MAX_LENGTH &&
     isSupportedPracticeTimezone(practiceForm.timezone) &&
     isClinicRegionCode(practiceForm.country) &&
@@ -592,6 +594,9 @@ function PracticeInfoTab() {
     address: practice.address ?? "",
     phone: practice.phone ?? "",
     email: practice.email ?? "",
+    inboxAlertEmail:
+      (practice.settings as { inboxAlertEmail?: string } | null)
+        ?.inboxAlertEmail ?? "",
     website: practice.website ?? "",
     timezone: practice.timezone ?? "America/New_York",
     country:
@@ -670,6 +675,24 @@ function PracticeInfoTab() {
                 />
               </label>
             </div>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium">
+                Email me about new requests
+              </span>
+              <Input
+                type="email"
+                placeholder="Leave blank for no email alerts"
+                maxLength={SETTINGS_EMAIL_MAX_LENGTH}
+                value={current.inboxAlertEmail}
+                onChange={(e) =>
+                  handleChange("inboxAlertEmail", e.target.value)
+                }
+              />
+              <span className="block text-xs text-muted-foreground">
+                New appointment requests and client portal messages are also
+                sent here, in addition to the inbox.
+              </span>
+            </label>
             <label className="space-y-1.5">
               <span className="text-sm font-medium">Website</span>
               <Input
@@ -966,6 +989,7 @@ function PracticeInfoTab() {
             ...current,
             country: current.country,
             email: current.email.trim() || undefined,
+            inboxAlertEmail: current.inboxAlertEmail.trim(),
           });
         }}
         disabled={!isPracticeInfoFormValid(current) || updateMutation.isPending}

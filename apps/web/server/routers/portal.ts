@@ -58,6 +58,7 @@ import {
 } from "@/lib/billing/invoice-payment-tokens";
 import { COMMUNICATION_CONTENT_MAX_LENGTH } from "@/lib/communications/policy";
 import { latestAssignedToForClient } from "@/lib/communications/assignment";
+import { queueInboxAlert } from "@/lib/communications/inbox-alert";
 import { stripeConfigured } from "@/lib/stripe-config";
 import { not, inArray, lt, gt } from "drizzle-orm";
 import { gte, or } from "drizzle-orm";
@@ -826,6 +827,11 @@ export const portalRouter = createRouter({
         });
       }
 
+      await queueInboxAlert(ctx, client.practiceId, {
+        subject: message.subject ?? "New portal message",
+        content: input.content,
+      });
+
       return {
         success: true,
         message,
@@ -1406,13 +1412,8 @@ export const portalRouter = createRouter({
       );
 
       // Mirror into the communications inbox so front desk sees it there too.
-      await ctx.db.insert(communications).values({
-        practiceId: client.practiceId,
-        clientId: client.id,
-        channel: "portal",
-        direction: "inbound",
-        subject: `Appointment request for ${patient.name}`,
-        content: [
+      const requestSubject = `Appointment request for ${patient.name}`;
+      const requestContent = [
           `Pet: ${patient.name}`,
           `Requested: ${formatPortalRequestDateTime(
             input.preferredDate,
@@ -1421,9 +1422,20 @@ export const portalRouter = createRouter({
           )}`,
           `Location: ${selectedLocation.name}`,
           `Reason: ${input.reason}`,
-        ].join("\n"),
+        ].join("\n");
+      await ctx.db.insert(communications).values({
+        practiceId: client.practiceId,
+        clientId: client.id,
+        channel: "portal",
+        direction: "inbound",
+        subject: requestSubject,
+        content: requestContent,
         status: "pending",
         assignedTo: latestAssignedToForClient(client.practiceId, client.id),
+      });
+      await queueInboxAlert(ctx, client.practiceId, {
+        subject: requestSubject,
+        content: `Client: ${client.firstName} ${client.lastName}\n${requestContent}`,
       });
 
       await dispatchAppointmentWebhookAfterCommit(

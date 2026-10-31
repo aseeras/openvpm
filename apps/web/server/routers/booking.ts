@@ -32,6 +32,7 @@ import {
 import { providerCoverageForDate } from "@/lib/scheduling/provider-availability";
 import { billingEnforced, hasHostedFullAccess } from "@/lib/billing/plans";
 import { latestAssignedToForClient } from "@/lib/communications/assignment";
+import { queueInboxAlert } from "@/lib/communications/inbox-alert";
 import { clinicalDateInput } from "@/lib/records/clinical-inputs";
 import {
   bookingPageConfigInput,
@@ -769,21 +770,27 @@ export const bookingRouter = createRouter({
 
       // Surface the request in the communications inbox so the front desk
       // sees it alongside portal requests and messages.
+      const requestSubject = `New appointment request for ${petName}`;
+      const requestContent = [
+        `Client: ${input.contact.firstName} ${input.contact.lastName}${isNewClient ? " (new client)" : ""}`,
+        `Pet: ${petName}`,
+        `Requested: ${input.date} ${input.time}`,
+        `Location: ${selectedLocation.name}`,
+        `Details: ${appointmentNote}`,
+      ].join("\n");
       await ctx.db.insert(communications).values({
         practiceId: practice.id,
         clientId,
         channel: "portal",
         direction: "inbound",
-        subject: `New appointment request for ${petName}`,
-        content: [
-          `Client: ${input.contact.firstName} ${input.contact.lastName}${isNewClient ? " (new client)" : ""}`,
-          `Pet: ${petName}`,
-          `Requested: ${input.date} ${input.time}`,
-          `Location: ${selectedLocation.name}`,
-          `Details: ${appointmentNote}`,
-        ].join("\n"),
+        subject: requestSubject,
+        content: requestContent,
         status: "pending",
         assignedTo: latestAssignedToForClient(practice.id, clientId),
+      });
+      await queueInboxAlert(ctx, practice.id, {
+        subject: requestSubject,
+        content: requestContent,
       });
 
       await dispatchAppointmentWebhookAfterCommit(
