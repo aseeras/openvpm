@@ -109,7 +109,10 @@ test("signed-out pages load", async ({ page }) => {
   const errors = watchErrors(page);
   await visit(page, errors, "guest", "staff-sign-in", "/login");
   await visit(page, errors, "guest", "portal-sign-in", "/portal", /apple/i);
-  await visit(page, errors, "guest", "online-booking", "/book");
+  // Online booking lives at /book/<practice slug>; check it when the slug is known.
+  if (process.env.LIVE_BOOKING_SLUG) {
+    await visit(page, errors, "guest", "online-booking", `/book/${process.env.LIVE_BOOKING_SLUG}`);
+  }
   expect(checks.filter((c) => c.who === "guest" && !c.ok)).toEqual([]);
 });
 
