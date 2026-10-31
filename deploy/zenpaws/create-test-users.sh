@@ -4,6 +4,7 @@
 #   sudo ZP_FRONT_DESK_HASH='...' ZP_TECH_HASH='...' ZP_CLIENT_HASH='...' \
 #     bash create-test-users.sh            # create (safe to re-run)
 #   sudo bash create-test-users.sh --remove  # remove the test logins and records
+#   sudo bash create-test-users.sh --status  # show whether they exist
 #
 # Each *_HASH is a bcrypt hash of that login's password, made by whoever hands
 # out the passwords, so no password is typed on or stored by this server.
@@ -29,6 +30,18 @@ FRONT_DESK_EMAIL="test-frontdesk@zenpawsdvm.test"
 TECH_EMAIL="test-tech@zenpawsdvm.test"
 CLIENT_EMAIL="test-client@zenpawsdvm.test"
 PORTAL_USERNAME="zp-test-client"
+
+if [ "${1:-}" = "--status" ]; then
+  echo "Staff test logins (email | role | active | sign-in practice):"
+  "${PSQL[@]}" -c "select u.email, u.role, u.deleted_at is null, p.name from users u join practices p on p.id = u.practice_id where u.email in ('$FRONT_DESK_EMAIL', '$TECH_EMAIL')"
+  echo "Portal test login (username | failed attempts | locked until):"
+  "${PSQL[@]}" -c "select username, failed_attempts, coalesce(locked_until::text, 'not locked') from portal_accounts where username = '$PORTAL_USERNAME' and deleted_at is null"
+  echo "Test client records (client | pets | visits):"
+  "${PSQL[@]}" -c "select c.first_name || ' ' || c.last_name, (select count(*) from patients where client_id = c.id and deleted_at is null), (select count(*) from appointments where client_id = c.id and deleted_at is null) from clients c where c.last_name = 'Tester (test)' and c.deleted_at is null"
+  echo "Practices on this server:"
+  "${PSQL[@]}" -c "select name, deleted_at is null from practices order by created_at"
+  exit 0
+fi
 
 if [ "${1:-}" = "--remove" ]; then
   "${PSQL[@]}" <<SQL
