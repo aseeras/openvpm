@@ -13,6 +13,33 @@ set -euo pipefail
 APP="https://app.zenpawsdvm.com"
 PSQL=(psql "$MASTER_URL" -v ON_ERROR_STOP=1 -Atq)
 
+# sudo bash create-admin.sh --rename OLD_EMAIL NEW_EMAIL
+# Moves an existing login to a new sign-in email and makes it an admin. Its
+# password, chart history and schedule stay with it.
+if [ "${1:-}" = "--rename" ]; then
+  OLD=$(echo "${2:-}" | tr '[:upper:]' '[:lower:]'); NEW=$(echo "${3:-}" | tr '[:upper:]' '[:lower:]')
+  [ -n "$OLD" ] && [ -n "$NEW" ] || { echo "usage: sudo bash create-admin.sh --rename OLD_EMAIL NEW_EMAIL"; exit 1; }
+  result=$("${PSQL[@]}" -v old="$OLD" -v new="$NEW" <<'SQL'
+select case
+  when not exists (select 1 from users where email = :'old') then 'missing'
+  when exists (select 1 from users where email = :'new') then 'taken'
+  else 'ok' end;
+SQL
+)
+  case "$result" in
+    missing) echo "$OLD has no login. Nothing was changed."; exit 1 ;;
+    taken) echo "$NEW already has its own login. Nothing was changed."; exit 1 ;;
+  esac
+  "${PSQL[@]}" -v old="$OLD" -v new="$NEW" <<'SQL'
+update users set email = :'new', role = 'admin', deleted_at = null, email_verified_at = coalesce(email_verified_at, now()),
+  session_version = session_version + 1, updated_at = now()
+where email = :'old';
+SQL
+  echo "$OLD now signs in as $NEW (admin, same password)."
+  echo "DONE"
+  exit 0
+fi
+
 RESET=""; [ "${1:-}" = "--reset" ] && { RESET=1; shift; }
 PW="${1:-}"; shift || true
 [ ${#PW} -ge 8 ] || { echo "The password must be at least 8 characters. Nothing was changed."; exit 1; }
