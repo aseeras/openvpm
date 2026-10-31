@@ -52,7 +52,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           >
             {children}
             <Toaster richColors position="bottom-right" />
-            <Analytics beforeSend={filterVercelAnalyticsEvent} />
+            {process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === "1" ? (
+              <Analytics beforeSend={filterVercelAnalyticsEvent} />
+            ) : null}
           </ThemeProvider>
         </SessionProvider>
       </QueryClientProvider>
