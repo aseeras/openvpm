@@ -546,6 +546,8 @@ interface PracticeSettings {
   };
   /** Live brand accent color (set in settings; logo lives in practices.logoUrl). */
   brandColor?: string;
+  /** Optional address emailed when a new request lands in the inbox. */
+  inboxAlertEmail?: string | null;
   ambulatoryWorkspace?: {
     enabled: boolean;
     measurementSystem: (typeof MEASUREMENT_SYSTEMS)[number];
@@ -779,6 +781,8 @@ export const settingsRouter = createRouter({
           address: addressInput,
           phone: phoneInput,
           email: optionalEmailInput,
+          // Where new inbox requests are emailed; "" turns alerts off.
+          inboxAlertEmail: z.union([emailInput, z.literal("")]).optional(),
           website: optionalTrimmedString(
             "Website",
             SETTINGS_WEBSITE_MAX_LENGTH,
@@ -846,7 +850,8 @@ export const settingsRouter = createRouter({
 
         // brandColor isn't a column — merge it into practices.settings without
         // clobbering other keys.
-        const { brandColor, jurisdictionSource, ...columns } = input;
+        const { brandColor, inboxAlertEmail, jurisdictionSource, ...columns } =
+          input;
         const patch: Record<string, unknown> = { ...columns };
         let jurisdictionPatch: object = {};
         // When the country changes, fill in any region fields the caller didn't
@@ -866,10 +871,13 @@ export const settingsRouter = createRouter({
         if (typeof patch.currency === "string") {
           patch.currency = (patch.currency as string).toLowerCase();
         }
-        const settingsPatch =
+        const settingsPatch: Record<string, unknown> =
           brandColor !== undefined
             ? { brandColor: brandColor.toLowerCase() }
             : {};
+        if (inboxAlertEmail !== undefined) {
+          settingsPatch.inboxAlertEmail = inboxAlertEmail || null;
+        }
         if (Object.keys(jurisdictionPatch).length > 0) {
           patch.settings = settingsAndOnboardingStateMergePatch(
             settingsPatch,
