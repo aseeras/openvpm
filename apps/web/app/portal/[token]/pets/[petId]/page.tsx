@@ -194,8 +194,9 @@ export default function PetDetailPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{data.name}</h1>
           <p className="text-gray-500">
-            {data.breed || data.species} &middot; {data.color || ""} &middot;{" "}
-            {calculatePortalAge(data.dob)}
+            {[data.breed || data.species, data.color, calculatePortalAge(data.dob)]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
           <p className="text-sm text-gray-400 capitalize">
             {data.sex?.replace("_", " ")}
