@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { portalSignInIdentities } from "@openpims/db";
 import { db } from "@openpims/db/client";
 import { withSystem } from "@/lib/tenant-db";
 import { readJsonRequestBody } from "@/lib/request-json";
@@ -16,6 +14,7 @@ import {
   verifyAppleIdentityToken,
 } from "@/lib/portal/apple-sign-in";
 import { signInWithProviderIdentity } from "@/lib/portal/identity-sign-in";
+import { linkProviderIdentity } from "@/lib/portal/identity-link";
 import {
   portalSessionCookieName,
   portalSessionCookieOptions,
@@ -91,29 +90,13 @@ export async function POST(req: NextRequest) {
           now,
         );
         if (!session) return "signed_out" as const;
-        const { practiceId, id: clientId } = session.client;
-        const [existing] = await tx
-          .select({ clientId: portalSignInIdentities.clientId })
-          .from(portalSignInIdentities)
-          .where(
-            and(
-              eq(portalSignInIdentities.practiceId, practiceId),
-              eq(portalSignInIdentities.provider, PROVIDER),
-              eq(portalSignInIdentities.subject, identity.subject),
-              isNull(portalSignInIdentities.deletedAt),
-            ),
-          )
-          .limit(1);
-        if (existing) return existing.clientId === clientId ? ("linked" as const) : ("taken" as const);
-        await tx.insert(portalSignInIdentities).values({
-          practiceId,
-          clientId,
+        return linkProviderIdentity(tx, {
+          practiceId: session.client.practiceId,
+          clientId: session.client.id,
           provider: PROVIDER,
-          subject: identity.subject,
-          email: identity.email,
-          lastUsedAt: now,
+          identity,
+          now,
         });
-        return "linked" as const;
       });
       if (outcome === "signed_out") {
         return json({ error: "Your session ended. Sign in again, then turn on Sign in with Apple." }, 401);

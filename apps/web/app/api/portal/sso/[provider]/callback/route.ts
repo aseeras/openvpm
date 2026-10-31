@@ -6,7 +6,8 @@ import { clientIpFromRequest } from "@/lib/request-ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { IdTokenError } from "@/lib/portal/id-token";
 import { signInWithProviderIdentity, type SignInProvider } from "@/lib/portal/identity-sign-in";
-import { portalSessionCookieName, portalSessionCookieOptions } from "@/lib/portal/session";
+import { linkProviderIdentity } from "@/lib/portal/identity-link";
+import { portalSessionCookieName, portalSessionCookieOptions, resolvePortalSession } from "@/lib/portal/session";
 import {
   appleIdentityFromPost,
   decodeSsoCookie,
@@ -60,6 +61,28 @@ async function finish(
   }
 
   const now = new Date();
+  if (saved.link) {
+    const link = saved.link;
+    try {
+      const outcome = await withSystem(db, async (tx) => {
+        const session = await resolvePortalSession(tx, link, now);
+        if (!session) return "signed_out" as const;
+        return linkProviderIdentity(tx, {
+          practiceId: session.client.practiceId,
+          clientId: session.client.id,
+          provider: saved.provider,
+          identity,
+          now,
+        });
+      });
+      if (outcome === "linked") return redirect(`/portal/account?sso_linked=${saved.provider}`);
+      return backToSignIn(outcome);
+    } catch {
+      console.error(`[portal-sso] ${provider} link failed`);
+      return backToSignIn("unavailable");
+    }
+  }
+
   try {
     const rawSessionToken = await withSystem(db, (tx) =>
       signInWithProviderIdentity(tx, {

@@ -53,15 +53,25 @@ export function safeNextPath(value: unknown): string {
   return value;
 }
 
-export type SsoState = { provider: SignInProvider; state: string; nonce: string; next: string };
+/**
+ * `link` is set when a signed-in client is turning the provider on from
+ * Account: it holds their portal session credential, because Apple's
+ * cross-site form post back doesn't carry the (SameSite=Lax) session cookie.
+ * This cookie is HttpOnly, scoped to /api/portal/sso and lives ten minutes.
+ */
+export type SsoState = { provider: SignInProvider; state: string; nonce: string; next: string; link?: string };
 
-export function newSsoState(provider: SignInProvider, next: unknown): SsoState {
-  return {
+const SESSION_CREDENTIAL = /^[0-9a-f]{16,256}$/;
+
+export function newSsoState(provider: SignInProvider, next: unknown, link?: string | null): SsoState {
+  const sso: SsoState = {
     provider,
     state: randomBytes(24).toString("base64url"),
     nonce: randomBytes(24).toString("base64url"),
     next: safeNextPath(next),
   };
+  if (link && SESSION_CREDENTIAL.test(link)) sso.link = link;
+  return sso;
 }
 
 export function encodeSsoCookie(value: SsoState): string {
@@ -80,7 +90,9 @@ export function decodeSsoCookie(raw: string | undefined): SsoState | null {
     ) {
       return null;
     }
-    return { provider: value.provider, state: value.state, nonce: value.nonce, next: safeNextPath(value.next) };
+    const sso: SsoState = { provider: value.provider, state: value.state, nonce: value.nonce, next: safeNextPath(value.next) };
+    if (typeof value.link === "string" && SESSION_CREDENTIAL.test(value.link)) sso.link = value.link;
+    return sso;
   } catch {
     return null;
   }

@@ -84,6 +84,15 @@ describe("the sign-in round trip cookie", () => {
     const redirected = Buffer.from(JSON.stringify({ provider: "apple", state: "s", nonce: "n", next: "https://evil.example" })).toString("base64url");
     expect(decodeSsoCookie(redirected)?.next).toBe("/portal");
   });
+
+  it("keeps a signed-in client's session only when it looks like one", () => {
+    const session = "b".repeat(64);
+    expect(decodeSsoCookie(encodeSsoCookie(newSsoState("apple", null, session)))?.link).toBe(session);
+    expect(newSsoState("apple", null, "not a session; path=/").link).toBeUndefined();
+    expect(newSsoState("apple", null).link).toBeUndefined();
+    const forged = Buffer.from(JSON.stringify({ provider: "apple", state: "s", nonce: "n", link: { $ne: null } })).toString("base64url");
+    expect(decodeSsoCookie(forged)?.link).toBeUndefined();
+  });
 });
 
 describe("provider settings", () => {

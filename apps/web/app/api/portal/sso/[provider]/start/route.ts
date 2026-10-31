@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { appBaseUrl } from "@/lib/app-url";
 import { clientIpFromRequest } from "@/lib/request-ip";
 import { rateLimit } from "@/lib/rate-limit";
+import { portalSessionTokenFromCookie } from "@/lib/portal/session";
 import {
   authorizeUrl,
   encodeSsoCookie,
@@ -20,7 +21,11 @@ function backToSignIn(error: string) {
   });
 }
 
-/** "Continue with Apple / Google": remember a state and nonce, then go to the provider. */
+/**
+ * "Continue with Apple / Google": remember a state and nonce, then go to the
+ * provider. With `?intent=link`, a signed-in client is turning the provider
+ * on from Account instead of signing in.
+ */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
   if (!isSignInProvider(provider)) return backToSignIn("unavailable");
@@ -34,7 +39,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   }
   if (!allowed) return backToSignIn("busy");
 
-  const sso = newSsoState(provider, req.nextUrl.searchParams.get("next"));
+  const query = req.nextUrl.searchParams;
+  let link: string | null = null;
+  if (query.get("intent") === "link") {
+    link = portalSessionTokenFromCookie(req.headers.get("cookie"));
+    if (!link) return backToSignIn("signed_out");
+  }
+  const sso = newSsoState(provider, link ? "/portal/account" : query.get("next"), link);
   const destination = authorizeUrl(sso);
   if (!destination) return backToSignIn("unavailable");
 

@@ -13,6 +13,8 @@ const SSO_ERRORS: Record<string, string> = {
   not_linked:
     "We couldn't set up an account from that sign-in. Sign in with your username and password, or create an account.",
   busy: "Too many attempts. Please wait a few minutes and try again.",
+  signed_out: "Your session ended. Sign in again, then turn on Sign in with Apple in Account.",
+  taken: "That Apple ID is already connected to another ZenPaws account.",
   unavailable: "That sign-in option isn't available right now. Please use your username and password.",
 };
 
