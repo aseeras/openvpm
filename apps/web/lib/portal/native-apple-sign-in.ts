@@ -39,22 +39,26 @@ async function postJson(url: string, body?: unknown) {
   return { ok: response.ok, data };
 }
 
-export async function runAppleSignIn(mode: "sign_in" | "link"): Promise<AppleSignInResult> {
+export type NativeAppleAuthorization =
+  | { status: "ok"; identityToken: string; givenName?: string; familyName?: string }
+  | { status: "cancelled" }
+  | { status: "error"; message: string };
+
+/**
+ * Shows Apple's sheet through the app's native plugin and returns the
+ * identity token Apple issued for this nonce. Used by the client portal and
+ * by the staff sign-in page.
+ */
+export async function nativeAppleAuthorize(nonce: string): Promise<NativeAppleAuthorization> {
   const cap = capacitor();
   if (!cap?.nativePromise || !nativeAppleSignInAvailable()) {
-    return { status: "error", message: "Sign in with Apple works in the ZenPaws iPhone app." };
+    return { status: "error", message: "Sign in with Apple works in the ZenPaws app." };
   }
-  const nonceResponse = await postJson("/api/portal/apple/nonce");
-  const nonce = nonceResponse.data.nonce;
-  if (!nonceResponse.ok || typeof nonce !== "string") {
-    return { status: "error", message: "Sign in with Apple isn't available right now." };
-  }
-
-  let identityToken: unknown;
   // Apple shares the person's name only the first time they sign in to the
   // app; it names a new account.
   let givenName: string | undefined;
   let familyName: string | undefined;
+  let identityToken: unknown;
   try {
     const result = (await cap.nativePromise(PLUGIN, "authorize", { nonce })) as {
       identityToken?: unknown;
@@ -73,6 +77,23 @@ export async function runAppleSignIn(mode: "sign_in" | "link"): Promise<AppleSig
   if (typeof identityToken !== "string") {
     return { status: "error", message: "Sign in with Apple didn't finish. Please try again." };
   }
+  return { status: "ok", identityToken, givenName, familyName };
+}
+
+export async function runAppleSignIn(mode: "sign_in" | "link"): Promise<AppleSignInResult> {
+  const cap = capacitor();
+  if (!cap?.nativePromise || !nativeAppleSignInAvailable()) {
+    return { status: "error", message: "Sign in with Apple works in the ZenPaws iPhone app." };
+  }
+  const nonceResponse = await postJson("/api/portal/apple/nonce");
+  const nonce = nonceResponse.data.nonce;
+  if (!nonceResponse.ok || typeof nonce !== "string") {
+    return { status: "error", message: "Sign in with Apple isn't available right now." };
+  }
+
+  const authorized = await nativeAppleAuthorize(nonce);
+  if (authorized.status !== "ok") return authorized;
+  const { identityToken, givenName, familyName } = authorized;
 
   const verified = await postJson("/api/portal/apple", { identityToken, mode, givenName, familyName });
   if (verified.ok) return { status: "ok" };

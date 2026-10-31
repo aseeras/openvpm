@@ -59,6 +59,10 @@ export const users = pgTable(
     mfaPendingExpiresAt: timestamp("mfa_pending_expires_at", {
       withTimezone: true,
     }),
+    // Sign in with Apple for staff: Apple's stable user id for the Apple ID
+    // this login is connected to. Never a password or token.
+    appleSubject: varchar("apple_subject", { length: 255 }),
+    appleLinkedAt: timestamp("apple_linked_at", { withTimezone: true }),
   },
   (table) => ({
     practiceIdUq: uniqueIndex("users_practice_id_uq").on(
@@ -74,6 +78,9 @@ export const users = pgTable(
       table.locationId,
       table.deletedAt
     ),
+    appleSubjectUq: uniqueIndex("users_apple_subject_uq")
+      .on(table.appleSubject)
+      .where(sql`${table.appleSubject} is not null`),
     roleIdx: index("users_role_idx").on(table.practiceId, table.role),
     veterinarianIdx: index("users_veterinarian_idx").on(
       table.practiceId,

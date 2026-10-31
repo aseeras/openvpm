@@ -18,6 +18,14 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
 - **Saved passwords:** iOS offers the staff login from Passwords/iCloud
   Keychain once the server publishes the app under `webcredentials`
   (`APPLE_WEB_CREDENTIAL_APP_IDS`; the ZenPaws updater sets it).
+- **Sign in with Apple:** a native plugin (`StaffAppleSignInPlugin`) shows
+  Apple's sheet on the sign-in page. It only opens staff logins that already
+  exist: staff turn it on from the menu after signing in once, or it connects
+  on first use when the Apple ID's verified email is listed for that login in
+  `APPLE_STAFF_APPLE_IDS` (`deploy/zenpaws/allow-apple-id.sh`). The server needs
+  `APPLE_STAFF_SIGN_IN_CLIENT_IDS=com.zenpawsdvm.staff` (the ZenPaws updater
+  sets it), and the bundle id needs the Sign in with Apple capability
+  (`scripts/register-bundle-id.mjs` turns it on before each build).
 
 - **Offline:** `www/offline.html` is shown when the system cannot be reached.
 - **Builds:** `.github/workflows/zenpaws-staff-ios-testflight.yml` archives

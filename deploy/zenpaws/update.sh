@@ -20,6 +20,9 @@ fi
 sed -i 's#^EMAIL_FROM=ZenPaws <noreply@zenpawsdvm.com>$#EMAIL_FROM="ZenPaws <noreply@zenpawsdvm.com>"#' /etc/openvpm.env
 # Sign in with Apple for the ZenPaws iPhone app (bundle id com.zenpawsdvm.client).
 grep -q '^APPLE_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_SIGN_IN_CLIENT_IDS=com.zenpawsdvm.client' >> /etc/openvpm.env
+# Sign in with Apple for staff in the ZenPaws VPM app (bundle id
+# com.zenpawsdvm.staff). It only opens staff logins that already exist.
+grep -q '^APPLE_STAFF_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_STAFF_SIGN_IN_CLIENT_IDS=com.zenpawsdvm.staff' >> /etc/openvpm.env
 # Video visits run on Amazon (Kinesis Video Streams WebRTC) with the server's
 # AWS credentials; the old third-party video settings are no longer used.
 grep -q '^TELEHEALTH_VIDEO=' /etc/openvpm.env || echo 'TELEHEALTH_VIDEO=aws_kvs' >> /etc/openvpm.env
