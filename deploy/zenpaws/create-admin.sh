@@ -5,7 +5,7 @@
 # Every new admin gets the same starting password. Without --reset, an email
 # that already has a login is left untouched. With --reset, an existing login
 # is made an active admin and its password is replaced (other sessions for
-# that login are signed out).
+# that login are signed out) and failed sign-in lockouts are cleared.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
 [ -f /root/zenpaws-admin.env ] || { echo "Run set-db-admin.sh first (no /root/zenpaws-admin.env)."; exit 1; }
@@ -50,6 +50,8 @@ select role::text || case when deleted_at is null then '' else ', archived' end 
 SQL
 )
     "${PSQL[@]}" -v email="$EMAIL" -v hash="$HASH" <<'SQL'
+-- Clear failed sign-in counters so a recent lockout doesn't block the new password.
+delete from rate_limit_buckets where key = 'login:email:' || :'email' or key like 'login:ip:%';
 update users set password_hash = :'hash', role = 'admin', deleted_at = null,
   session_version = session_version + 1, updated_at = now()
 where email = :'email';
