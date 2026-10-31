@@ -6,6 +6,8 @@
 #                                                  # 6:00-7:30 AM so no bookable slot is taken
 #   sudo bash load-sample-practice.sh --status     # show what is loaded
 #   sudo bash load-sample-practice.sh --remove     # take all of it out again
+#   add --for you@example.com to any of these to use the clinic that login
+#   belongs to (otherwise the server's first clinic is used)
 #
 # What it loads: 18 households and 26 pets (all owners' last names end in
 # "(demo)", emails are @example.com, phones are 555-01xx), with eight months
@@ -28,21 +30,44 @@ APP="${ZP_APP_URL:-https://app.zenpawsdvm.com}"
 PSQL=(psql "$MASTER_URL" -v ON_ERROR_STOP=1 -Atq)
 MARK="zenpaws-sample"
 
-PRACTICE_SQL="(select id from practices where deleted_at is null order by created_at limit 1)"
+MODE=load OFF_HOURS=0 FOR_EMAIL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --status) MODE=status ;;
+    --remove) MODE=remove ;;
+    --off-hours) OFF_HOURS=1 ;;
+    --for) FOR_EMAIL="${2:-}"; shift ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+  shift
+done
 
-if [ "${1:-}" = "--status" ]; then
+if [ -n "$FOR_EMAIL" ]; then
+  [[ "$FOR_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] || { echo "Not an email address: $FOR_EMAIL"; exit 1; }
+  PRACTICE_ID=$("${PSQL[@]}" -c "select practice_id from users where lower(email) = lower('$FOR_EMAIL') and deleted_at is null limit 1")
+  [ -n "$PRACTICE_ID" ] || { echo "No active login $FOR_EMAIL on this server. Nothing was changed."; exit 1; }
+else
+  PRACTICE_ID=$("${PSQL[@]}" -c "select id from practices where deleted_at is null order by created_at limit 1")
+fi
+PRACTICE_SQL="'$PRACTICE_ID'::uuid"
+
+if [ "$MODE" = status ]; then
+  echo "Clinics on this server (clinic | sample households | logins):"
+  "${PSQL[@]}" -F ' | ' -c "select p.name, (select count(*) from clients c where c.practice_id = p.id and c.external_source = '$MARK' and c.deleted_at is null), coalesce((select string_agg(u.email || ' (' || u.role || ')', ', ' order by u.created_at) from users u where u.practice_id = p.id and u.deleted_at is null), 'none') from practices p where p.deleted_at is null order by p.created_at"
+  echo
+  echo "In the clinic this command uses:"
   "${PSQL[@]}" -F ' ' <<SQL
-select 'Sample households:', count(*) from clients where external_source = '$MARK' and deleted_at is null;
-select 'Sample pets:      ', count(*) from patients where external_source = '$MARK' and deleted_at is null;
+select 'Sample households:', count(*) from clients where external_source = '$MARK' and deleted_at is null and practice_id = $PRACTICE_SQL;
+select 'Sample pets:      ', count(*) from patients where external_source = '$MARK' and deleted_at is null and practice_id = $PRACTICE_SQL;
 select 'Sample visits:    ', count(*) from appointments a join clients c on c.id = a.client_id
-  where c.external_source = '$MARK' and a.deleted_at is null;
+  where c.external_source = '$MARK' and a.deleted_at is null and c.practice_id = $PRACTICE_SQL;
 select 'Upcoming visits:  ', count(*) from appointments a join clients c on c.id = a.client_id
-  where c.external_source = '$MARK' and a.deleted_at is null and a.start_time > now();
+  where c.external_source = '$MARK' and a.deleted_at is null and a.start_time > now() and c.practice_id = $PRACTICE_SQL;
 SQL
   exit 0
 fi
 
-if [ "${1:-}" = "--remove" ]; then
+if [ "$MODE" = remove ]; then
   "${PSQL[@]}" -v mark="$MARK" <<SQL
 begin;
 select pg_advisory_xact_lock(hashtextextended('openvpm:demo-data:' || $PRACTICE_SQL::text, 0));
@@ -71,18 +96,18 @@ SQL
   exit 0
 fi
 
-OFF_HOURS=0
-[ "${1:-}" = "--off-hours" ] && OFF_HOURS=1
 
 existing=$("${PSQL[@]}" -c "select count(*) from clients where external_source = '$MARK' and deleted_at is null and practice_id = $PRACTICE_SQL")
 if [ "$existing" != "0" ]; then
   echo "Sample practice data is already loaded ($existing households). To rebuild it, run --remove first."
+  echo "Can't see it in the app? Run with --status to check which clinic each login belongs to."
   exit 0
 fi
 
-"${PSQL[@]}" -o /dev/null -v mark="$MARK" -v off_hours="$OFF_HOURS" <<'SQL'
+"${PSQL[@]}" -o /dev/null -v mark="$MARK" -v off_hours="$OFF_HOURS" -v practice="$PRACTICE_ID" <<'SQL'
 begin;
-select set_config('zp.mark', :'mark', true), set_config('zp.off_hours', :'off_hours', true);
+select set_config('zp.mark', :'mark', true), set_config('zp.off_hours', :'off_hours', true),
+       set_config('zp.practice', :'practice', true);
 
 create temp table zp_people (n int, first_name text, last_name text, street text, city text, zip text) on commit drop;
 insert into zp_people values
@@ -263,7 +288,7 @@ declare
 begin
   perform setseed(0.42);
   select id, coalesce(nullif(timezone, ''), 'America/New_York') into practice, tz
-  from practices where deleted_at is null order by created_at limit 1;
+  from practices where id = current_setting('zp.practice')::uuid and deleted_at is null;
   perform pg_advisory_xact_lock(hashtextextended('openvpm:demo-data:' || practice::text, 0));
   select id, name into vet, vet_name from users
   where practice_id = practice and deleted_at is null and role in ('veterinarian', 'admin')
@@ -502,10 +527,12 @@ commit;
 SQL
 
 "${PSQL[@]}" -F ' ' <<SQL
-select 'Loaded', count(*), 'households,' from clients where external_source = '$MARK' and deleted_at is null;
-select '      ', count(*), 'pets,' from patients where external_source = '$MARK' and deleted_at is null;
+select 'Clinic:', name from practices where id = $PRACTICE_SQL;
+select 'Loaded', count(*), 'households,' from clients where external_source = '$MARK' and deleted_at is null and practice_id = $PRACTICE_SQL;
+select '      ', count(*), 'pets,' from patients where external_source = '$MARK' and deleted_at is null and practice_id = $PRACTICE_SQL;
 select '      ', count(*), 'visits (' || count(*) filter (where a.start_time::date >= current_date) || ' today or upcoming).'
-  from appointments a join clients c on c.id = a.client_id where c.external_source = '$MARK' and a.deleted_at is null;
+  from appointments a join clients c on c.id = a.client_id
+  where c.external_source = '$MARK' and a.deleted_at is null and c.practice_id = $PRACTICE_SQL;
 SQL
 cat <<MSG
 
