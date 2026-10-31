@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { clients, portalSignInIdentities, practices } from "@openpims/db";
+import { portalSignInIdentities } from "@openpims/db";
 import { db } from "@openpims/db/client";
 import { withSystem } from "@/lib/tenant-db";
 import { readJsonRequestBody } from "@/lib/request-json";
@@ -15,8 +15,7 @@ import {
   AppleTokenError,
   verifyAppleIdentityToken,
 } from "@/lib/portal/apple-sign-in";
-import { insertPortalSession } from "@/lib/portal/create-session";
-import { normalizeEmail, signUpPracticeId } from "@/lib/portal/accounts";
+import { signInWithProviderIdentity } from "@/lib/portal/identity-sign-in";
 import {
   portalSessionCookieName,
   portalSessionCookieOptions,
@@ -33,7 +32,7 @@ const input = z.object({
   familyName: z.string().trim().max(128).optional(),
 });
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
-const PROVIDER = "apple";
+const PROVIDER = "apple" as const;
 
 function json(body: unknown, status = 200) {
   const response = NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
@@ -54,12 +53,6 @@ async function allowAttempt(ip: string): Promise<boolean> {
     return false;
   }
 }
-
-const activeClient = (tx: typeof db) =>
-  tx
-    .select({ id: clients.id, practiceId: clients.practiceId })
-    .from(clients)
-    .innerJoin(practices, and(eq(practices.id, clients.practiceId), isNull(practices.deletedAt)));
 
 export async function POST(req: NextRequest) {
   if (!isSameOriginRequest(req)) return json({ error: "Invalid request origin" }, 403);
@@ -131,76 +124,17 @@ export async function POST(req: NextRequest) {
       return json({ linked: true });
     }
 
-    const rawSessionToken = await withSystem(db, async (tx) => {
-      // 1. An Apple ID already connected to a client.
-      const [linked] = await tx
-        .select({
-          identityId: portalSignInIdentities.id,
-          clientId: portalSignInIdentities.clientId,
-          practiceId: portalSignInIdentities.practiceId,
-        })
-        .from(portalSignInIdentities)
-        .innerJoin(
-          clients,
-          and(
-            eq(clients.id, portalSignInIdentities.clientId),
-            eq(clients.practiceId, portalSignInIdentities.practiceId),
-            isNull(clients.deletedAt),
-          ),
-        )
-        .innerJoin(practices, and(eq(practices.id, portalSignInIdentities.practiceId), isNull(practices.deletedAt)))
-        .where(
-          and(
-            eq(portalSignInIdentities.provider, PROVIDER),
-            eq(portalSignInIdentities.subject, identity.subject),
-            isNull(portalSignInIdentities.deletedAt),
-          ),
-        )
-        .orderBy(desc(sql`coalesce(${portalSignInIdentities.lastUsedAt}, ${portalSignInIdentities.createdAt})`))
-        .limit(1);
-      if (linked) {
-        await tx
-          .update(portalSignInIdentities)
-          .set({ lastUsedAt: now })
-          .where(eq(portalSignInIdentities.id, linked.identityId));
-        return insertPortalSession(tx, { ...linked, ip, userAgent, now });
-      }
-
-      // 2. First time: the email Apple vouches for matches exactly one client.
-      if (!identity.emailVerified || !identity.email) return null;
-      const email = normalizeEmail(identity.email);
-      const matches = await activeClient(tx)
-        .where(and(sql`lower(${clients.email}) = ${email}`, isNull(clients.deletedAt)))
-        .limit(2);
-      // Several clients share this email: don't guess which one it is.
-      if (matches.length > 1) return null;
-      let client = matches[0];
-      // 3. Someone new: create their client record, like signing up with a
-      // username and password does (Apple has already confirmed the email).
-      if (!client) {
-        const practiceId = await signUpPracticeId(tx);
-        if (!practiceId) return null;
-        const [created] = await tx
-          .insert(clients)
-          .values({
-            practiceId,
-            firstName: parsed.data.givenName || "Apple",
-            lastName: parsed.data.familyName || (parsed.data.givenName ? "" : "user"),
-            email,
-          })
-          .returning({ id: clients.id, practiceId: clients.practiceId });
-        client = created!;
-      }
-      await tx.insert(portalSignInIdentities).values({
-        practiceId: client.practiceId,
-        clientId: client.id,
+    const rawSessionToken = await withSystem(db, (tx) =>
+      signInWithProviderIdentity(tx, {
         provider: PROVIDER,
-        subject: identity.subject,
-        email: identity.email,
-        lastUsedAt: now,
-      });
-      return insertPortalSession(tx, { practiceId: client.practiceId, clientId: client.id, ip, userAgent, now });
-    });
+        identity,
+        givenName: parsed.data.givenName,
+        familyName: parsed.data.familyName,
+        ip,
+        userAgent,
+        now,
+      }),
+    );
 
     if (!rawSessionToken) {
       return json(

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import { ZP } from "@/lib/portal/zenpaws-theme";
-import { AppleSignInButton } from "@/components/portal/apple-sign-in-button";
+import { SignInProviders } from "@/components/portal/sign-in-providers";
 
 type Mode = "sign_in" | "sign_up" | "verify" | "forgot" | "reset";
 type Result = { ok: boolean; data: Record<string, unknown> };
@@ -138,16 +138,7 @@ export function PortalAuth({ initialMode = "sign_in" }: { initialMode?: Mode }) 
     <div className="space-y-4">
       <h1 className="text-center text-xl font-black">{titles[mode]}</h1>
 
-      {mode === "sign_in" ? (
-        <>
-          <AppleSignInButton mode="sign_in" />
-          <div className="flex items-center gap-3 text-xs font-bold" style={{ color: ZP.muted }}>
-            <span className="h-px flex-1" style={{ backgroundColor: ZP.border }} />
-            or
-            <span className="h-px flex-1" style={{ backgroundColor: ZP.border }} />
-          </div>
-        </>
-      ) : null}
+      {mode === "sign_in" ? <SignInProviders /> : null}
 
       {mode === "verify" || mode === "reset" ? (
         <p className="text-center text-sm font-semibold" style={{ color: ZP.muted }}>
