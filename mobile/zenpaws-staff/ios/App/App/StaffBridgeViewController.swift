@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import Capacitor
+import AuthenticationServices
 
 /// The staff app's web view controller. The whole clinic system runs as the
 /// live website; this adds what a phone needs around it:
@@ -9,10 +10,15 @@ import Capacitor
 ///   handed to the share sheet, so they can be saved, printed or sent;
 /// - links that open a new tab on the clinic's own site stay in the app, so
 ///   staff stay signed in;
-/// - pull down to reload.
+/// - pull down to reload;
+/// - Sign in with Apple (`StaffAppleSignInPlugin` below).
 class StaffBridgeViewController: CAPBridgeViewController {
     private var webDelegate: StaffWebViewDelegate?
     private let refresh = UIRefreshControl()
+
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(StaffAppleSignInPlugin())
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -195,5 +201,86 @@ private extension UIColor {
         guard numbers.count >= 3 else { return nil }
         if numbers.count >= 4 && numbers[3] == 0 { return nil }
         self.init(red: numbers[0] / 255, green: numbers[1] / 255, blue: numbers[2] / 255, alpha: 1)
+    }
+}
+
+/// Sign in with Apple for staff. The sign-in page passes a one-time nonce
+/// from the server; Apple returns an identity token carrying it, which the
+/// page sends back to the server to check and sign the staff member in. The
+/// JavaScript name matches the client app's plugin so the site can use one
+/// code path for both apps.
+@objc(StaffAppleSignInPlugin)
+public class StaffAppleSignInPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "StaffAppleSignInPlugin"
+    public let jsName = "ZenPawsAppleSignIn"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "authorize", returnType: CAPPluginReturnPromise),
+    ]
+
+    private var pendingCall: CAPPluginCall?
+
+    @objc func authorize(_ call: CAPPluginCall) {
+        guard let nonce = call.getString("nonce"), !nonce.isEmpty else {
+            call.reject("A nonce is required")
+            return
+        }
+        DispatchQueue.main.async {
+            if let previous = self.pendingCall {
+                previous.reject("Superseded by a new sign-in request", "1001")
+            }
+            self.pendingCall = call
+
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            request.requestedScopes = [.email, .fullName]
+            request.nonce = nonce
+
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+    }
+}
+
+extension StaffAppleSignInPlugin: ASAuthorizationControllerDelegate {
+    public func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithAuthorization authorization: ASAuthorization
+    ) {
+        guard let call = pendingCall else { return }
+        pendingCall = nil
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
+              let identityToken = String(data: tokenData, encoding: .utf8) else {
+            call.reject("Apple did not return an identity token")
+            return
+        }
+        call.resolve([
+            "identityToken": identityToken,
+            "user": credential.user,
+            "email": credential.email ?? NSNull(),
+            "givenName": credential.fullName?.givenName ?? NSNull(),
+            "familyName": credential.fullName?.familyName ?? NSNull(),
+        ])
+    }
+
+    public func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithError error: Error
+    ) {
+        guard let call = pendingCall else { return }
+        pendingCall = nil
+        let code = (error as? ASAuthorizationError)?.code
+        if code == .canceled {
+            call.reject("Sign in with Apple was cancelled", "1001")
+        } else {
+            call.reject(error.localizedDescription, String((error as NSError).code))
+        }
+    }
+}
+
+extension StaffAppleSignInPlugin: ASAuthorizationControllerPresentationContextProviding {
+    public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        return bridge?.viewController?.view.window ?? ASPresentationAnchor()
     }
 }

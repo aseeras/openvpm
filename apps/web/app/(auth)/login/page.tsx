@@ -19,6 +19,7 @@ import {
 import { trackFunnelEvent } from "@/lib/track-funnel-event";
 import { getFunnelVisitorId, useFunnelVisitorId } from "@/lib/funnel-visitor";
 import { safeAuthNextPath } from "@/lib/auth-redirect";
+import { StaffAppleSignInButton } from "@/components/auth/staff-apple-sign-in";
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE?.trim() === "true";
 
@@ -230,6 +231,15 @@ function LoginPageInner() {
                 : "Sign in"}
           </button>
         </form>
+
+        {!DEMO_MODE && (
+          <StaffAppleSignInButton
+            onSignedIn={() => {
+              router.push(nextPath);
+              router.refresh();
+            }}
+          />
+        )}
 
         {!DEMO_MODE && (
           <p className="mt-4 text-center text-sm text-muted-foreground">

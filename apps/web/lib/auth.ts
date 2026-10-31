@@ -17,6 +17,17 @@ import {
   isDemoRole,
   verifiedDemoAccessFromRequest,
 } from "@/lib/demo-access";
+import {
+  APPLE_IDENTITY_TOKEN_MAX_LENGTH,
+  AppleTokenError,
+  verifyAppleIdentityToken,
+} from "@/lib/portal/apple-sign-in";
+import {
+  cookieFromHeader,
+  findStaffForAppleIdentity,
+  STAFF_APPLE_NONCE_COOKIE,
+  staffAppleClientIds,
+} from "@/lib/staff-apple-sign-in";
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_EMAIL_LIMIT = 8;
@@ -25,6 +36,25 @@ export const LOGIN_EMAIL_MAX_LENGTH = AUTH_EMAIL_MAX_LENGTH;
 const DUMMY_PASSWORD_HASH =
   "$2a$12$952CXRCtzm0M4qmcFoZkteQvA5Tdh.CIhvCabrgb5qUbk.VcE35va";
 const DEMO_PRACTICE_NAME = "Neighborhood Veterinary";
+const APPLE_IP_LIMIT = 20;
+
+/** Messages the sign-in page shows when Sign in with Apple can't open a login. */
+export const STAFF_APPLE_ERRORS = {
+  notConnected: "apple_not_connected",
+  expired: "apple_expired",
+  failed: "apple_failed",
+  busy: "apple_busy",
+} as const;
+
+function headerValue(
+  headers: Record<string, unknown> | undefined,
+  name: string,
+): string | null {
+  const value = headers?.[name];
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
 
 const loginCredentialsInput = z.object({
   email: z
@@ -201,6 +231,67 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          practiceId: user.practiceId,
+        };
+      },
+    }),
+    CredentialsProvider({
+      // Sign in with Apple from the staff iPhone/iPad app. The app gets an
+      // identity token from Apple carrying the nonce this server handed out
+      // (kept in an httpOnly cookie); it only opens an existing staff login.
+      id: "apple",
+      name: "apple",
+      credentials: {
+        identityToken: { label: "Apple identity token", type: "text" },
+      },
+      async authorize(credentials, req) {
+        if (demoModeEnabled()) return null;
+        const audiences = staffAppleClientIds();
+        const identityToken = credentials?.identityToken;
+        if (
+          audiences.length === 0 ||
+          typeof identityToken !== "string" ||
+          identityToken.length === 0 ||
+          identityToken.length > APPLE_IDENTITY_TOKEN_MAX_LENGTH
+        ) {
+          throw new Error(STAFF_APPLE_ERRORS.failed);
+        }
+
+        const ip = clientIpFromAuthRequest(req);
+        try {
+          const limit = await rateLimit({
+            key: `login:apple:ip:${ip || "unknown"}`,
+            limit: APPLE_IP_LIMIT,
+            windowMs: LOGIN_WINDOW_MS,
+          });
+          if (!limit.success) throw new Error(STAFF_APPLE_ERRORS.busy);
+        } catch (err) {
+          if (err instanceof Error && err.message === STAFF_APPLE_ERRORS.busy) throw err;
+          console.error("[auth] Apple sign-in rate limit failed");
+          throw new Error(STAFF_APPLE_ERRORS.busy);
+        }
+
+        const nonce = cookieFromHeader(
+          headerValue(req?.headers as Record<string, unknown> | undefined, "cookie"),
+          STAFF_APPLE_NONCE_COOKIE,
+        );
+        if (!nonce) throw new Error(STAFF_APPLE_ERRORS.expired);
+
+        let identity;
+        try {
+          identity = await verifyAppleIdentityToken(identityToken, { audiences, nonce });
+        } catch (err) {
+          if (!(err instanceof AppleTokenError)) console.error("[auth] Apple token check failed");
+          throw new Error(STAFF_APPLE_ERRORS.failed);
+        }
+
+        const user = await withSystem(db, (tx) => findStaffForAppleIdentity(tx, identity));
+        if (!user) throw new Error(STAFF_APPLE_ERRORS.notConnected);
         return {
           id: user.id,
           email: user.email,

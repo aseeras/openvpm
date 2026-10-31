@@ -30,6 +30,7 @@ import {
   Video,
 } from "lucide-react";
 import { PawMark } from "@/components/brand/paw-mark";
+import { StaffAppleConnect } from "@/components/auth/staff-apple-sign-in";
 
 type UserRole =
   | "admin"
@@ -271,6 +272,7 @@ export function Sidebar({
             </button>
           </div>
         )}
+        {session?.user && !isCollapsed && <StaffAppleConnect />}
         {collapsible && (
           <button
             onClick={() => setCollapsed(!collapsed)}

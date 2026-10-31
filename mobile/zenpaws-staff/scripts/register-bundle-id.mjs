@@ -1,7 +1,8 @@
 // Registers the staff app's bundle ID with Apple (so it can be picked when
 // creating the App Store Connect app) and turns on Associated Domains, which
-// the app uses for saved-password autofill. Safe to run repeatedly. Uses the
-// same App Store Connect API key as the upload workflow; never prints it.
+// the app uses for saved-password autofill, and Sign in with Apple. Safe to
+// run repeatedly. Uses the same App Store Connect API key as the upload
+// workflow; never prints it.
 import { createSign } from "node:crypto";
 
 const BUNDLE_ID = process.env.BUNDLE_ID ?? "com.zenpawsdvm.staff";
@@ -57,16 +58,24 @@ if (!bundle) {
   console.log(`Bundle ID ${BUNDLE_ID} is registered.`);
 }
 
-const capability = await api("/v1/bundleIdCapabilities", {
-  method: "POST",
-  body: JSON.stringify({
-    data: {
-      type: "bundleIdCapabilities",
-      attributes: { capabilityType: "ASSOCIATED_DOMAINS" },
-      relationships: { bundleId: { data: { type: "bundleIds", id: bundle.id } } },
-    },
-  }),
-});
-// 409 means it was already on.
-if (capability.ok || capability.status === 409) console.log("Associated Domains is on.");
-else console.log(`Note: could not turn on Associated Domains (HTTP ${capability.status}); Xcode will try during signing.`);
+async function turnOn(capabilityType, label, settings) {
+  const result = await api("/v1/bundleIdCapabilities", {
+    method: "POST",
+    body: JSON.stringify({
+      data: {
+        type: "bundleIdCapabilities",
+        attributes: settings ? { capabilityType, settings } : { capabilityType },
+        relationships: { bundleId: { data: { type: "bundleIds", id: bundle.id } } },
+      },
+    }),
+  });
+  // 409 means it was already on.
+  if (result.ok || result.status === 409) console.log(`${label} is on.`);
+  else console.log(`Note: could not turn on ${label} (HTTP ${result.status}); Xcode will try during signing.`);
+}
+
+await turnOn("ASSOCIATED_DOMAINS", "Associated Domains");
+// Sign in with Apple, as its own primary app (not grouped with another app).
+await turnOn("APPLE_ID_AUTH", "Sign in with Apple", [
+  { key: "APPLE_ID_AUTH_APP_CONSENT", options: [{ key: "PRIMARY_APP_CONSENT" }] },
+]);
