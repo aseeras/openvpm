@@ -97,7 +97,7 @@ SIGNUP_PRACTICE=$(sed -n 's/^PORTAL_SIGNUP_PRACTICE_ID=\([0-9a-f-]\{36\}\)$/\1/p
 if [ "$HAVE_DB_ADMIN" = 1 ] && [ -n "$SIGNUP_PRACTICE" ]; then
   echo "  new client accounts join: $(psql "$MASTER_URL" -Atq -c "select name from practices where id = '$SIGNUP_PRACTICE' and deleted_at is null" || true)"
 else
-  echo "  new client accounts join: not set (works only while the server has one practice)"
+  echo "  new client accounts join: the first practice on this server (not pinned)"
 fi
 curl -sS -o /dev/null -w "local /login HTTP %{http_code}\n" http://127.0.0.1:3000/login
 echo "=== $(date -u +%FT%TZ) UPDATE COMPLETE"
