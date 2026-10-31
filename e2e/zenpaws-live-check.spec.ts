@@ -212,7 +212,8 @@ async function openTestPatient(page: Page, errors: string[], who: string) {
   await visibleText(page, TEST_CLIENT).click({ timeout: 20_000 });
   await page.waitForURL(/\/clients\/[0-9a-f-]{36}/, { timeout: 20_000 });
   await visit(page, errors, who, "test-client-record", new URL(page.url()).pathname, [TEST_CLIENT, TEST_PET]);
-  await visibleText(page, TEST_PET).click({ timeout: 20_000 });
+  // Exact match: the record also lists a message titled "Question about Biscuit (test)".
+  await page.getByText(TEST_PET, { exact: true }).filter({ visible: true }).first().click({ timeout: 20_000 });
   await page.waitForURL(/\/patients\/[0-9a-f-]{36}/, { timeout: 20_000 });
   state.patientId = new URL(page.url()).pathname.split("/")[2];
   await visit(page, errors, who, "test-patient-chart", new URL(page.url()).pathname, [TEST_PET, TEST_BREED, TEST_CLIENT]);
