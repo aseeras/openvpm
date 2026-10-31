@@ -1,10 +1,11 @@
 #!/bin/bash
 # Adds clinic admin (staff) logins to the ZenPaws OpenVPM server and checks
 # that each one can sign in.
-#   sudo bash create-admin.sh PASSWORD EMAIL "NAME" [EMAIL "NAME" ...]
-# Every new admin gets the same starting password; each person should change
-# it after their first sign-in. An email that already has a login is left
-# untouched, so this never resets someone's existing password.
+#   sudo bash create-admin.sh [--reset] PASSWORD EMAIL "NAME" [EMAIL "NAME" ...]
+# Every new admin gets the same starting password. Without --reset, an email
+# that already has a login is left untouched. With --reset, an existing login
+# is made an active admin and its password is replaced (other sessions for
+# that login are signed out).
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
 [ -f /root/zenpaws-admin.env ] || { echo "Run set-db-admin.sh first (no /root/zenpaws-admin.env)."; exit 1; }
@@ -12,9 +13,10 @@ set -euo pipefail
 APP="https://app.zenpawsdvm.com"
 PSQL=(psql "$MASTER_URL" -v ON_ERROR_STOP=1 -Atq)
 
+RESET=""; [ "${1:-}" = "--reset" ] && { RESET=1; shift; }
 PW="${1:-}"; shift || true
 [ ${#PW} -ge 8 ] || { echo "The password must be at least 8 characters. Nothing was changed."; exit 1; }
-[ $# -ge 2 ] && [ $(($# % 2)) -eq 0 ] || { echo "usage: sudo bash create-admin.sh PASSWORD EMAIL \"NAME\" [EMAIL \"NAME\" ...]"; exit 1; }
+[ $# -ge 2 ] && [ $(($# % 2)) -eq 0 ] || { echo "usage: sudo bash create-admin.sh [--reset] PASSWORD EMAIL \"NAME\" [EMAIL \"NAME\" ...]"; exit 1; }
 
 HASH=$(PW="$PW" node -e 'console.log(require(process.argv[1]).hashSync(process.env.PW, 12))' \
   "$(cd /opt/openvpm/apps/web && node -p 'require.resolve("bcryptjs")')")
@@ -42,8 +44,16 @@ SQL
 )
   if [ -n "$created" ]; then
     echo "$EMAIL: admin created. Sign-in check: $(sign_in "$EMAIL" "$PW")"
+  elif [ -n "$RESET" ]; then
+    before=$("${PSQL[@]}" -v email="$EMAIL" -c "select role || case when deleted_at is null then '' else ', archived' end from users where email = :'email'")
+    "${PSQL[@]}" -v email="$EMAIL" -v hash="$HASH" <<'SQL'
+update users set password_hash = :'hash', role = 'admin', deleted_at = null,
+  session_version = session_version + 1, updated_at = now()
+where email = :'email';
+SQL
+    echo "$EMAIL: was $before, now admin with the new password. Sign-in check: $(sign_in "$EMAIL" "$PW")"
   else
-    echo "$EMAIL: already has a login, left unchanged."
+    echo "$EMAIL: already has a login, left unchanged. Add --reset to make it admin with this password."
   fi
 done
 echo "DONE"
