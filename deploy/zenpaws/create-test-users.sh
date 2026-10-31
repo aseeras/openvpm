@@ -5,6 +5,7 @@
 #     bash create-test-users.sh            # create (safe to re-run)
 #   sudo bash create-test-users.sh --remove  # remove the test logins and records
 #   sudo bash create-test-users.sh --status  # show whether they exist
+#   sudo bash create-test-users.sh --reset   # new passwords, printed and checked
 #
 # Each *_HASH is a bcrypt hash of that login's password, made by whoever hands
 # out the passwords, so no password is typed on or stored by this server.
@@ -23,7 +24,7 @@ set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
 [ -f /root/zenpaws-admin.env ] || { echo "Run set-db-admin.sh first (no /root/zenpaws-admin.env)."; exit 1; }
 . /root/zenpaws-admin.env
-APP="https://app.zenpawsdvm.com"
+APP="${ZP_APP_URL:-https://app.zenpawsdvm.com}"
 PSQL=(psql "$MASTER_URL" -v ON_ERROR_STOP=1 -Atq)
 
 FRONT_DESK_EMAIL="test-frontdesk@zenpawsdvm.test"
@@ -69,6 +70,22 @@ update clients set deleted_at = now() where id in (select id from test_client);
 SQL
   echo "Test logins removed."
   exit 0
+fi
+
+# --reset makes new random passwords here, prints them, and then signs in
+# with each one against the live site to prove they work.
+RESET=""
+if [ "${1:-}" = "--reset" ]; then
+  RESET=1
+  new_password() ( set +o pipefail; LC_ALL=C tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' < /dev/urandom | head -c 12 | sed 's/^\(....\)\(....\)/\1-\2-/' )
+  bcrypt() {
+    PW="$1" node -e 'console.log(require(process.argv[1]).hashSync(process.env.PW, 12))' \
+      "$(cd /opt/openvpm/apps/web && node -p 'require.resolve("bcryptjs")')"
+  }
+  FRONT_DESK_PW=$(new_password); TECH_PW=$(new_password); CLIENT_PW=$(new_password)
+  ZP_FRONT_DESK_HASH=$(bcrypt "$FRONT_DESK_PW")
+  ZP_TECH_HASH=$(bcrypt "$TECH_PW")
+  ZP_CLIENT_HASH=$(bcrypt "$CLIENT_PW")
 fi
 
 for v in ZP_FRONT_DESK_HASH ZP_TECH_HASH ZP_CLIENT_HASH; do
@@ -225,6 +242,50 @@ SQL
 
 CLIENT_ID=$(tail -1 /tmp/zp-test-ids)
 rm -f /tmp/zp-test-ids
+
+if [ -n "$RESET" ]; then
+  staff_sign_in() {
+    local jar csrf result
+    jar=$(mktemp)
+    csrf=$(curl -fsS -c "$jar" "$APP/api/auth/csrf" | sed -n 's/.*"csrfToken":"\([^"]*\)".*/\1/p')
+    result=$(curl -sS -b "$jar" -c "$jar" -X POST "$APP/api/auth/callback/credentials" \
+      --data-urlencode "csrfToken=$csrf" --data-urlencode "email=$1" --data-urlencode "password=$2" \
+      --data-urlencode "json=true")
+    rm -f "$jar"
+    case "$result" in *error=*|"") echo "FAIL ($result)" ;; *) echo "OK" ;; esac
+  }
+  portal_sign_in() {
+    local code
+    code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$APP/api/portal/account" \
+      -H 'Content-Type: application/json' \
+      -d "{\"action\":\"sign_in\",\"login\":\"$PORTAL_USERNAME\",\"password\":\"$CLIENT_PW\"}")
+    [ "$code" = 200 ] && echo "OK" || echo "FAIL (HTTP $code)"
+  }
+  cat <<MSG
+
+============================================================
+ TEST LOGINS (new passwords, write them down)
+============================================================
+ Staff, front desk   $APP/login
+   username: $FRONT_DESK_EMAIL
+   password: $FRONT_DESK_PW
+   sign-in check: $(staff_sign_in "$FRONT_DESK_EMAIL" "$FRONT_DESK_PW")
+
+ Staff, technician   $APP/login
+   username: $TECH_EMAIL
+   password: $TECH_PW
+   sign-in check: $(staff_sign_in "$TECH_EMAIL" "$TECH_PW")
+
+ Client portal       $APP/portal  (Account tab)
+   username: $PORTAL_USERNAME
+   password: $CLIENT_PW
+   sign-in check: $(portal_sign_in)
+
+ Test client record: $APP/clients/$CLIENT_ID
+============================================================
+MSG
+  exit 0
+fi
 
 cat <<MSG
 
