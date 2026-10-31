@@ -30,4 +30,13 @@ describe("Vercel Analytics capability privacy", () => {
       "<Analytics beforeSend={filterVercelAnalyticsEvent} />",
     );
   });
+
+  it("loads Vercel Analytics only on Vercel builds", () => {
+    const source = readFileSync("lib/providers.tsx", "utf8");
+    expect(source).toContain('process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === "1"');
+    const config = readFileSync("next.config.js", "utf8");
+    expect(config).toContain(
+      'NEXT_PUBLIC_VERCEL_ANALYTICS: process.env.VERCEL === "1" ? "1" : ""',
+    );
+  });
 });
