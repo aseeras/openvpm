@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { encodeSsoCookie, newSsoState, SSO_COOKIE } from "@/lib/portal/web-sso";
+import { decodeSsoCookie, encodeSsoCookie, newSsoState, SSO_COOKIE } from "@/lib/portal/web-sso";
 
 const signIn = vi.hoisted(() => ({ result: "raw-session-token" as string | null, calls: [] as unknown[] }));
+const linking = vi.hoisted(() => ({
+  session: { client: { id: "client-1", practiceId: "practice-1" } } as unknown,
+  outcome: "linked" as "linked" | "taken",
+  sessionTokens: [] as unknown[],
+  calls: [] as unknown[],
+}));
 const google = vi.hoisted(() => ({ identity: null as unknown, error: null as Error | null, nonces: [] as string[] }));
 
 vi.mock("@openpims/db/client", () => ({ db: {} }));
@@ -12,6 +18,19 @@ vi.mock("@/lib/portal/identity-sign-in", () => ({
   signInWithProviderIdentity: async (_tx: unknown, input: unknown) => {
     signIn.calls.push(input);
     return signIn.result;
+  },
+}));
+vi.mock("@/lib/portal/identity-link", () => ({
+  linkProviderIdentity: async (_tx: unknown, input: unknown) => {
+    linking.calls.push(input);
+    return linking.outcome;
+  },
+}));
+vi.mock("@/lib/portal/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/portal/session")>()),
+  resolvePortalSession: async (_tx: unknown, token: unknown) => {
+    linking.sessionTokens.push(token);
+    return linking.session;
   },
 }));
 vi.mock("@/lib/portal/web-sso", async (importOriginal) => ({
@@ -29,9 +48,13 @@ const { IdTokenError } = await import("@/lib/portal/id-token");
 
 const params = (provider: string) => ({ params: Promise.resolve({ provider }) });
 
-function request(url: string, init: { cookie?: string; form?: Record<string, string> } = {}) {
+function request(url: string, init: { cookie?: string; session?: string; form?: Record<string, string> } = {}) {
   const headers = new Headers({ "user-agent": "vitest" });
-  if (init.cookie) headers.set("cookie", `${SSO_COOKIE}=${init.cookie}`);
+  const cookies = [
+    init.cookie ? `${SSO_COOKIE}=${init.cookie}` : null,
+    init.session ? `openvpm_portal_session=${init.session}` : null,
+  ].filter(Boolean);
+  if (cookies.length) headers.set("cookie", cookies.join("; "));
   if (!init.form) return new NextRequest(url, { headers });
   headers.set("content-type", "application/x-www-form-urlencoded");
   return new NextRequest(url, { method: "POST", headers, body: new URLSearchParams(init.form).toString() });
@@ -50,6 +73,10 @@ beforeEach(() => {
   google.identity = { subject: "g-1", email: "owner@example.com", emailVerified: true, givenName: "Sam" };
   google.error = null;
   google.nonces = [];
+  linking.session = { client: { id: "client-1", practiceId: "practice-1" } };
+  linking.outcome = "linked";
+  linking.sessionTokens = [];
+  linking.calls = [];
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -148,5 +175,65 @@ describe("Apple callback", () => {
     );
     expect(location(response).searchParams.get("sso_error")).toBe("expired");
     expect(signIn.calls).toEqual([]);
+  });
+});
+
+const SESSION = "a".repeat(64);
+
+describe("turning a provider on from Account", () => {
+  it("needs a signed-in client to start", async () => {
+    const response = await start(
+      request("https://app.example.com/api/portal/sso/google/start?intent=link"),
+      params("google"),
+    );
+    expect(location(response).searchParams.get("sso_error")).toBe("signed_out");
+  });
+
+  it("carries the session through the round trip and comes back to Account", async () => {
+    const response = await start(
+      request("https://app.example.com/api/portal/sso/google/start?intent=link&next=/portal/book", { session: SESSION }),
+      params("google"),
+    );
+    expect(location(response).host).toBe("accounts.google.com");
+    const cookie = /zp_sso=([^;]+)/.exec(setCookie(response))![1]!;
+    const saved = decodeSsoCookie(cookie)!;
+    expect(saved.link).toBe(SESSION);
+    expect(saved.next).toBe("/portal/account");
+  });
+
+  const linkSso = newSsoState("google", null, SESSION);
+  const callback = (query: string) =>
+    googleCallback(
+      request(`https://app.example.com/api/portal/sso/google/callback?${query}`, { cookie: encodeSsoCookie(linkSso) }),
+      params("google"),
+    );
+
+  it("connects the identity to the signed-in client without starting a new session", async () => {
+    const response = await callback(`state=${linkSso.state}&code=abc`);
+    expect(location(response).toString()).toBe("https://app.example.com/portal/account?sso_linked=google");
+    expect(setCookie(response)).not.toContain("raw-session-token");
+    expect(linking.sessionTokens).toEqual([SESSION]);
+    expect(linking.calls).toEqual([
+      expect.objectContaining({
+        clientId: "client-1",
+        practiceId: "practice-1",
+        provider: "google",
+        identity: expect.objectContaining({ subject: "g-1" }),
+      }),
+    ]);
+    expect(signIn.calls).toEqual([]);
+  });
+
+  it("refuses an identity already connected to someone else", async () => {
+    linking.outcome = "taken";
+    const response = await callback(`state=${linkSso.state}&code=abc`);
+    expect(location(response).searchParams.get("sso_error")).toBe("taken");
+  });
+
+  it("asks them to sign in again when the session ended meanwhile", async () => {
+    linking.session = null;
+    const response = await callback(`state=${linkSso.state}&code=abc`);
+    expect(location(response).searchParams.get("sso_error")).toBe("signed_out");
+    expect(linking.calls).toEqual([]);
   });
 });

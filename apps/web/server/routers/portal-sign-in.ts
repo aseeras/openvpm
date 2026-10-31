@@ -15,7 +15,10 @@ export const portalSignInRouter = createRouter({
    */
   options: publicProcedure.query(() => ({ apple: appleSignInEnabled(), web: webSignInOptions() })),
 
-  /** Whether this client has an Apple ID connected. */
+  /**
+   * Whether this client has an Apple ID connected, and where it can be turned
+   * on: `appleAvailable` in the iPhone app, `appleWeb` in any browser.
+   */
   status: portalProcedure.query(async ({ ctx }) => {
     const [link] = await ctx.db
       .select({ id: portalSignInIdentities.id })
@@ -29,7 +32,11 @@ export const portalSignInRouter = createRouter({
         ),
       )
       .limit(1);
-    return { appleAvailable: appleSignInEnabled(), appleLinked: Boolean(link) };
+    return {
+      appleAvailable: appleSignInEnabled(),
+      appleWeb: webSignInOptions().apple,
+      appleLinked: Boolean(link),
+    };
   }),
 
   /** Disconnect Sign in with Apple from this client. */
