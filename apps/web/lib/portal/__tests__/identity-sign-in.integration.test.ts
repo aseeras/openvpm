@@ -107,6 +107,19 @@ describeWithPostgres("portal sign-in with Apple or Google (PostgreSQL)", () => {
     expect(owners).toHaveLength(1);
   });
 
+  it("starts a fresh account when the Apple ID's old account was archived", async () => {
+    const identity = { subject: "apple-archived", email: "archived@example.com", emailVerified: true };
+    const first = await sessionClient(await signIn(identity, { givenName: "Lee" }));
+    await db.update(schema.clients).set({ deletedAt: now }).where(eq(schema.clients.id, first.id));
+
+    const second = await sessionClient(await signIn(identity));
+    expect(second.id).not.toBe(first.id);
+    expect(second.email).toBe("archived@example.com");
+    const live = await identitiesFor("apple-archived");
+    expect(live).toHaveLength(1);
+    expect(live[0]!.clientId).toBe(second.id);
+  });
+
   it("names the account after Apple when Apple doesn't share a name", async () => {
     const client = await sessionClient(
       await signIn({ subject: "apple-new-2", email: "abc123@privaterelay.appleid.com", emailVerified: true }),
@@ -142,31 +155,41 @@ describeWithPostgres("portal sign-in with Apple or Google (PostgreSQL)", () => {
     expect(client.id).toBe(existing!.id);
   });
 
-  it("doesn't guess when several clients share the email", async () => {
-    await db.insert(schema.clients).values([
-      { practiceId: clinicId, firstName: "Sam", lastName: "One", email: "family@example.com" },
-      { practiceId: clinicId, firstName: "Alex", lastName: "Two", email: "family@example.com" },
-    ]);
-    expect(await signIn({ subject: "apple-family", email: "family@example.com", emailVerified: true })).toBeNull();
-    expect(await identitiesFor("apple-family")).toHaveLength(0);
+  it("gives a new account its own record when several clients share the email", async () => {
+    const family = await db
+      .insert(schema.clients)
+      .values([
+        { practiceId: clinicId, firstName: "Sam", lastName: "One", email: "family@example.com" },
+        { practiceId: clinicId, firstName: "Alex", lastName: "Two", email: "family@example.com" },
+      ])
+      .returning({ id: schema.clients.id });
+    const client = await sessionClient(
+      await signIn({ subject: "apple-family", email: "family@example.com", emailVerified: true }, { givenName: "Max" }),
+    );
+    expect(family.map((row) => row.id)).not.toContain(client.id);
+    expect(client).toMatchObject({ firstName: "Max", email: "family@example.com" });
+    expect(await identitiesFor("apple-family")).toHaveLength(1);
   });
 
-  it("joins the practice named in PORTAL_SIGNUP_PRACTICE_ID when the server has several", async () => {
+  it("joins the practice named in PORTAL_SIGNUP_PRACTICE_ID, or the first one, when the server has several", async () => {
     const [other] = await db
       .insert(schema.practices)
       .values({ name: "Another Practice" })
       .returning({ id: schema.practices.id });
     const identity = { subject: "apple-two-practices", email: "two@example.com", emailVerified: true };
 
+    // Without the setting, the account still gets made, in the first practice set up.
     vi.stubEnv("PORTAL_SIGNUP_PRACTICE_ID", "");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    expect(await signIn(identity)).toBeNull();
+    const fallback = await sessionClient(
+      await signIn({ subject: "apple-unset-practice", email: "unset@example.com", emailVerified: true }),
+    );
+    expect(fallback.practiceId).toBe(clinicId);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("PORTAL_SIGNUP_PRACTICE_ID"));
     warn.mockRestore();
 
-    vi.stubEnv("PORTAL_SIGNUP_PRACTICE_ID", clinicId);
+    vi.stubEnv("PORTAL_SIGNUP_PRACTICE_ID", other!.id);
     const client = await sessionClient(await signIn(identity));
-    expect(client.practiceId).toBe(clinicId);
-    expect(client.practiceId).not.toBe(other!.id);
+    expect(client.practiceId).toBe(other!.id);
   });
 });

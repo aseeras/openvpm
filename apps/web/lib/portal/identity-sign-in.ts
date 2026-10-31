@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { clients, portalSignInIdentities, practices } from "@openpims/db";
 import type { Database } from "@openpims/db/client";
 import { insertPortalSession } from "./create-session";
@@ -13,18 +13,22 @@ export type ProviderIdentity = {
 };
 
 /**
- * Start a portal session for someone Apple or Google has vouched for.
+ * Start a portal session for someone Apple or Google has vouched for. Every
+ * such sign-in ends up in a client portal account:
  *
  * 1. An identity already connected to a client signs that client in.
  * 2. The first time, a verified email matching exactly one client connects to it.
  * 3. Anyone else gets a new client portal account, like signing up with a
  *    password does. The provider has already confirmed who they are, so this
  *    works even when they chose not to share an email; an unverified email is
- *    never kept, so it can't be mistaken for a match later.
+ *    never kept, so it can't be mistaken for a match later. When several
+ *    clients share the email we don't guess between them: the new account
+ *    stands on its own and the clinic can merge records later.
  *
- * Returns the raw session cookie credential, or null when we can't tell which
- * client this is (several clients share the email) or which practice a new
- * account should join (several practices and no PORTAL_SIGNUP_PRACTICE_ID).
+ * An identity whose account was archived starts over with a new account.
+ *
+ * Returns the raw session cookie credential, or null only when the server has
+ * no practice at all for the account to join.
  */
 export async function signInWithProviderIdentity(
   tx: Database,
@@ -82,19 +86,12 @@ export async function signInWithProviderIdentity(
       .innerJoin(practices, and(eq(practices.id, clients.practiceId), isNull(practices.deletedAt)))
       .where(and(sql`lower(${clients.email}) = ${email}`, isNull(clients.deletedAt)))
       .limit(2);
-    // Several clients share this email: don't guess which one it is.
-    if (matches.length > 1) {
-      console.warn(`[portal-sso] ${provider} sign-in not linked: several clients share the email`);
-      return null;
-    }
-    client = matches[0];
+    if (matches.length === 1) client = matches[0];
   }
   if (!client) {
-    const practiceId = await signUpPracticeId(tx);
+    const practiceId = (await signUpPracticeId(tx)) ?? (await oldestPracticeId(tx));
     if (!practiceId) {
-      console.warn(
-        `[portal-sso] ${provider} sign-in can't create an account: set PORTAL_SIGNUP_PRACTICE_ID to the practice new clients join`,
-      );
+      console.warn(`[portal-sso] ${provider} sign-in can't create an account: this server has no practice`);
       return null;
     }
     const fallbackFirstName = provider === "apple" ? "Apple" : "Google";
@@ -109,6 +106,18 @@ export async function signInWithProviderIdentity(
       .returning({ id: clients.id, practiceId: clients.practiceId });
     client = created!;
   }
+  // A connection left behind by an archived account would block the new one.
+  await tx
+    .update(portalSignInIdentities)
+    .set({ deletedAt: now })
+    .where(
+      and(
+        eq(portalSignInIdentities.practiceId, client.practiceId),
+        eq(portalSignInIdentities.provider, provider),
+        eq(portalSignInIdentities.subject, identity.subject),
+        isNull(portalSignInIdentities.deletedAt),
+      ),
+    );
   await tx.insert(portalSignInIdentities).values({
     practiceId: client.practiceId,
     clientId: client.id,
@@ -118,4 +127,22 @@ export async function signInWithProviderIdentity(
     lastUsedAt: now,
   });
   return insertPortalSession(tx, { practiceId: client.practiceId, clientId: client.id, ip, userAgent, now });
+}
+
+/**
+ * Where a new account goes when the server has several practices and
+ * PORTAL_SIGNUP_PRACTICE_ID isn't set: the first practice set up, which on a
+ * single-clinic server is the clinic itself.
+ */
+async function oldestPracticeId(tx: Database): Promise<string | null> {
+  const [oldest] = await tx
+    .select({ id: practices.id })
+    .from(practices)
+    .where(isNull(practices.deletedAt))
+    .orderBy(asc(practices.createdAt))
+    .limit(1);
+  if (oldest) {
+    console.warn("[portal-sso] PORTAL_SIGNUP_PRACTICE_ID is not set; new account joins the first practice");
+  }
+  return oldest?.id ?? null;
 }
