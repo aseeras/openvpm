@@ -45,7 +45,10 @@ SQL
   if [ -n "$created" ]; then
     echo "$EMAIL: admin created. Sign-in check: $(sign_in "$EMAIL" "$PW")"
   elif [ -n "$RESET" ]; then
-    before=$("${PSQL[@]}" -v email="$EMAIL" -c "select role || case when deleted_at is null then '' else ', archived' end from users where email = :'email'")
+    before=$("${PSQL[@]}" -v email="$EMAIL" <<'SQL'
+select role::text || case when deleted_at is null then '' else ', archived' end from users where email = :'email';
+SQL
+)
     "${PSQL[@]}" -v email="$EMAIL" -v hash="$HASH" <<'SQL'
 update users set password_hash = :'hash', role = 'admin', deleted_at = null,
   session_version = session_version + 1, updated_at = now()
