@@ -17,11 +17,14 @@ export type ProviderIdentity = {
  *
  * 1. An identity already connected to a client signs that client in.
  * 2. The first time, a verified email matching exactly one client connects to it.
- * 3. Someone new gets a client record, like signing up with a password does
- *    (the provider has already confirmed the email).
+ * 3. Anyone else gets a new client portal account, like signing up with a
+ *    password does. The provider has already confirmed who they are, so this
+ *    works even when they chose not to share an email; an unverified email is
+ *    never kept, so it can't be mistaken for a match later.
  *
  * Returns the raw session cookie credential, or null when we can't tell which
- * client this is (no verified email, or several clients share it).
+ * client this is (several clients share the email) or which practice a new
+ * account should join (several practices and no PORTAL_SIGNUP_PRACTICE_ID).
  */
 export async function signInWithProviderIdentity(
   tx: Database,
@@ -70,20 +73,30 @@ export async function signInWithProviderIdentity(
     return insertPortalSession(tx, { ...linked, ip, userAgent, now });
   }
 
-  if (!identity.emailVerified || !identity.email) return null;
-  const email = normalizeEmail(identity.email);
-  const matches = await tx
-    .select({ id: clients.id, practiceId: clients.practiceId })
-    .from(clients)
-    .innerJoin(practices, and(eq(practices.id, clients.practiceId), isNull(practices.deletedAt)))
-    .where(and(sql`lower(${clients.email}) = ${email}`, isNull(clients.deletedAt)))
-    .limit(2);
-  // Several clients share this email: don't guess which one it is.
-  if (matches.length > 1) return null;
-  let client = matches[0];
+  const email = identity.emailVerified && identity.email ? normalizeEmail(identity.email) : null;
+  let client: { id: string; practiceId: string } | undefined;
+  if (email) {
+    const matches = await tx
+      .select({ id: clients.id, practiceId: clients.practiceId })
+      .from(clients)
+      .innerJoin(practices, and(eq(practices.id, clients.practiceId), isNull(practices.deletedAt)))
+      .where(and(sql`lower(${clients.email}) = ${email}`, isNull(clients.deletedAt)))
+      .limit(2);
+    // Several clients share this email: don't guess which one it is.
+    if (matches.length > 1) {
+      console.warn(`[portal-sso] ${provider} sign-in not linked: several clients share the email`);
+      return null;
+    }
+    client = matches[0];
+  }
   if (!client) {
     const practiceId = await signUpPracticeId(tx);
-    if (!practiceId) return null;
+    if (!practiceId) {
+      console.warn(
+        `[portal-sso] ${provider} sign-in can't create an account: set PORTAL_SIGNUP_PRACTICE_ID to the practice new clients join`,
+      );
+      return null;
+    }
     const fallbackFirstName = provider === "apple" ? "Apple" : "Google";
     const [created] = await tx
       .insert(clients)

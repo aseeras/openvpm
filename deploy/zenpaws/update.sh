@@ -31,6 +31,16 @@ TEAM_ID=$(sed -n 's/^APPLE_APP_LINK_APP_IDS=\([A-Z0-9]\{10\}\)\..*/\1/p' /etc/op
 if [ -n "$TEAM_ID" ] && ! grep -q '^APPLE_WEB_CREDENTIAL_APP_IDS=' /etc/openvpm.env; then
   echo "APPLE_WEB_CREDENTIAL_APP_IDS=${TEAM_ID}.com.zenpawsdvm.staff,${TEAM_ID}.com.zenpawsdvm.client" >> /etc/openvpm.env
 fi
+# New client portal accounts (password sign-up, Sign in with Apple) join the
+# clinic's own practice, the first one set up on this server. Without this,
+# a server with more than one practice can't tell which practice they belong to.
+if [ "$HAVE_DB_ADMIN" = 1 ] && ! grep -q '^PORTAL_SIGNUP_PRACTICE_ID=.' /etc/openvpm.env; then
+  SIGNUP_PRACTICE=$(psql "$MASTER_URL" -Atq -c "select id from practices where deleted_at is null order by created_at limit 1" || true)
+  if [[ "$SIGNUP_PRACTICE" =~ ^[0-9a-f-]{36}$ ]]; then
+    sed -i '/^PORTAL_SIGNUP_PRACTICE_ID=/d' /etc/openvpm.env
+    echo "PORTAL_SIGNUP_PRACTICE_ID=$SIGNUP_PRACTICE" >> /etc/openvpm.env
+  fi
+fi
 
 BRANCH="${1:-zenpaws}"
 cd /opt/openvpm
@@ -81,6 +91,13 @@ if curl -fsI http://127.0.0.1:3000/login | grep -qi 'kinesisvideo'; then
   echo "video visits: on (Amazon)"
 else
   echo "WARNING: video visits are not on in this build; send these lines to support."
+fi
+# Report which practice new client accounts join (name only).
+SIGNUP_PRACTICE=$(sed -n 's/^PORTAL_SIGNUP_PRACTICE_ID=\([0-9a-f-]\{36\}\)$/\1/p' /etc/openvpm.env | tail -1)
+if [ "$HAVE_DB_ADMIN" = 1 ] && [ -n "$SIGNUP_PRACTICE" ]; then
+  echo "  new client accounts join: $(psql "$MASTER_URL" -Atq -c "select name from practices where id = '$SIGNUP_PRACTICE' and deleted_at is null" || true)"
+else
+  echo "  new client accounts join: not set (works only while the server has one practice)"
 fi
 curl -sS -o /dev/null -w "local /login HTTP %{http_code}\n" http://127.0.0.1:3000/login
 echo "=== $(date -u +%FT%TZ) UPDATE COMPLETE"
