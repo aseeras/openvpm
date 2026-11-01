@@ -5,6 +5,7 @@ import { withSystem } from "@/lib/tenant-db";
 import { consoleProvider } from "./console";
 import { envValue, nonBlank } from "./env";
 import { hasNonBlankMessagingSender } from "./sender-query";
+import { quoProvider } from "./quo";
 import { telnyxProvider } from "./telnyx";
 import { twilioProvider } from "./twilio";
 import type {
@@ -27,7 +28,7 @@ export {
 
 /**
  * Resolve the active messaging provider. Explicit override via MESSAGING_PROVIDER
- * (telnyx|twilio), else the first configured provider (Telnyx preferred), else a
+ * (telnyx|twilio|quo), else the first configured provider (Telnyx preferred), else a
  * console fallback that logs instead of sending (local dev / CI). Mirrors the
  * provider-agnostic selection in lib/agent/runner.ts.
  */
@@ -38,14 +39,18 @@ export function getMessagingProvider(): MessagingProvider {
   const override = envValue("MESSAGING_PROVIDER")?.toLowerCase();
   if (override === "telnyx") return telnyxProvider;
   if (override === "twilio") return twilioProvider;
+  if (override === "quo") return quoProvider;
   if (telnyxProvider.isConfigured()) return telnyxProvider;
   if (twilioProvider.isConfigured()) return twilioProvider;
+  if (quoProvider.isConfigured()) return quoProvider;
   return consoleProvider;
 }
 
 /** Env names the active provider needs, for the hosted /api/health check. */
 export function requiredMessagingEnvNames(): string[] {
-  return getMessagingProvider().name === "twilio"
+  const name = getMessagingProvider().name;
+  if (name === "quo") return ["QUO_API_KEY", "QUO_WEBHOOK_SECRET"];
+  return name === "twilio"
     ? ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"]
     : [
         "TELNYX_API_KEY",
@@ -56,6 +61,12 @@ export function requiredMessagingEnvNames(): string[] {
 
 /** Platform-wide env default sender for the active provider (dev + fallback). */
 function envSender(providerName: MessagingProviderName): MessagingSender {
+  if (providerName === "quo") {
+    return {
+      messagingServiceId: envValue("QUO_PHONE_NUMBER_ID"),
+      from: envValue("QUO_PHONE_NUMBER"),
+    };
+  }
   if (providerName === "twilio") {
     return {
       messagingServiceId: envValue("TWILIO_MESSAGING_SERVICE_SID"),
@@ -72,6 +83,7 @@ function envSender(providerName: MessagingProviderName): MessagingSender {
 function providerByName(name: string): MessagingProvider | undefined {
   if (name === "telnyx") return telnyxProvider;
   if (name === "twilio") return twilioProvider;
+  if (name === "quo") return quoProvider;
   return undefined;
 }
 

@@ -9,7 +9,7 @@
  * handleInbound) arrive in later phases and will extend this interface.
  */
 
-export type MessagingProviderName = "telnyx" | "twilio" | "console";
+export type MessagingProviderName = "telnyx" | "twilio" | "quo" | "console";
 
 /**
  * Where a message is sent from. A messaging-service/profile id is preferred —

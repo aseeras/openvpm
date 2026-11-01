@@ -316,7 +316,7 @@ async function inboundAuthoritativeEvidence(
     throw new Error("Inbound provider evidence is not exactly projectable.");
   }
   await projectInboundSmsReplyInTransaction(tx, {
-    provider: event.provider as "telnyx" | "twilio",
+    provider: event.provider as "telnyx" | "twilio" | "quo",
     practiceId: attribution.practiceId,
     locationId: attribution.locationId,
     fromPhone: event.fromE164,
@@ -327,7 +327,7 @@ async function inboundAuthoritativeEvidence(
     recipientLockAlreadyHeld: true,
   });
   const dedupeKey = inboundSmsDedupeKey(
-    event.provider as "telnyx" | "twilio",
+    event.provider as "telnyx" | "twilio" | "quo",
     event.providerMessageId,
   );
   const [communication] = await tx
@@ -369,7 +369,7 @@ async function inboundAuthoritativeEvidence(
           eq(
             smsConsentEvents.eventKey,
             inboundSmsConsentEventKey(
-              event.provider as "telnyx" | "twilio",
+              event.provider as "telnyx" | "twilio" | "quo",
               event.providerMessageId,
               action,
             ),
@@ -474,7 +474,7 @@ async function deliveryAuthoritativeEvidence(
     throw new Error("Delivery evidence is not exactly projectable.");
   }
   const result = await recordSmsDeliveryCallbackInTransaction(tx, {
-    provider: event.provider as "telnyx" | "twilio",
+    provider: event.provider as "telnyx" | "twilio" | "quo",
     providerEventId: event.providerEventId,
     providerMessageId: event.providerMessageId,
     providerEventType: event.providerEventType,

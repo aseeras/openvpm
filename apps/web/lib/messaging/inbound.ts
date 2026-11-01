@@ -24,7 +24,7 @@ import {
   revokeSmsConsentAfterRecipientLockInTransaction,
 } from "./suppression";
 
-export type InboundSmsProvider = "telnyx" | "twilio";
+export type InboundSmsProvider = "telnyx" | "twilio" | "quo";
 export type InboundSmsAction =
   | "ignored"
   | "suppressed"
@@ -107,7 +107,7 @@ function nonBlank(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-function normalizedClientPhoneCondition(e164: string): SQL | null {
+export function normalizedClientPhoneCondition(e164: string): SQL | null {
   const normalized = normalizeE164(e164);
   if (!normalized) return null;
   const fullDigits = normalized.replace(/\D/g, "");
