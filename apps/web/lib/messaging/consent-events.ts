@@ -19,7 +19,7 @@ export type SmsConsentEventEvidence = {
   actorType: "staff" | "client" | "system";
   actorUserId?: string | null;
   actorName?: string | null;
-  provider?: "telnyx" | "twilio" | null;
+  provider?: "telnyx" | "twilio" | "quo" | null;
   providerMessageId?: string | null;
   eventKey: string;
   occurredAt?: Date;
@@ -30,7 +30,7 @@ export function staffSmsConsentEventKey(): string {
 }
 
 export function inboundSmsConsentEventKey(
-  provider: "telnyx" | "twilio",
+  provider: "telnyx" | "twilio" | "quo",
   providerMessageId: string,
   action: "granted" | "revoked",
 ): string {

@@ -192,7 +192,7 @@ export const smsSendAttempts = pgTable(
     ),
     providerCheck: check(
       "sms_send_attempts_provider_check",
-      sql`${table.provider} in ('telnyx', 'twilio', 'console')`,
+      sql`${table.provider} in ('telnyx', 'twilio', 'quo', 'console')`,
     ),
     senderCheck: check(
       "sms_send_attempts_sender_check",
@@ -368,7 +368,7 @@ export const smsDeliveryEvents = pgTable(
     ).on(table.classification, table.receivedAt, table.id),
     providerCheck: check(
       "sms_delivery_events_provider_check",
-      sql`${table.provider} in ('telnyx', 'twilio')`,
+      sql`${table.provider} in ('telnyx', 'twilio', 'quo')`,
     ),
     eventTypeCheck: check(
       "sms_delivery_events_event_type_check",

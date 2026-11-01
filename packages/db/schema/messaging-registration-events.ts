@@ -123,7 +123,7 @@ export const messagingRegistrationEvents = pgTable(
     }),
     shapeCheck: check(
       "messaging_registration_events_shape_check",
-      sql`${table.provider} in ('telnyx', 'twilio')
+      sql`${table.provider} in ('telnyx', 'twilio', 'quo')
         and ${table.reasonCode} ~ '^[a-z0-9_]{3,64}$'
         and ${table.actorName} = btrim(${table.actorName})
         and length(${table.actorName}) between 1 and 255

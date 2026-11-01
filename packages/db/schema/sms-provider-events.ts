@@ -167,7 +167,7 @@ export const smsProviderEvents = pgTable(
     }),
     providerCheck: check(
       "sms_provider_events_provider_check",
-      sql`${table.provider} in ('telnyx', 'twilio')`,
+      sql`${table.provider} in ('telnyx', 'twilio', 'quo')`,
     ),
     identifiersCheck: check(
       "sms_provider_events_identifiers_check",

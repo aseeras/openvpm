@@ -12,7 +12,7 @@ import {
 } from "@openpims/db";
 import { withSystem } from "@/lib/tenant-db";
 
-export type SmsDeliveryProvider = "telnyx" | "twilio";
+export type SmsDeliveryProvider = "telnyx" | "twilio" | "quo";
 export type SmsDeliveryClassification =
   | "unknown"
   | "sent"
@@ -53,7 +53,11 @@ export async function lockSmsDeliveryIdentity(
   providerMessageId: string | null | undefined,
 ) {
   const messageId = bounded(providerMessageId, 255);
-  if ((provider !== "telnyx" && provider !== "twilio") || !messageId) return;
+  if (
+    (provider !== "telnyx" && provider !== "twilio" && provider !== "quo") ||
+    !messageId
+  )
+    return;
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`sms-delivery:${provider}:${messageId}`}, 0))`,
   );
@@ -440,7 +444,8 @@ export async function processPendingDeliveryEvidenceForAcceptedSend(
   providerMessageId: string,
   options: { identityLockHeld?: boolean } = {},
 ) {
-  if (provider !== "telnyx" && provider !== "twilio") return [];
+  if (provider !== "telnyx" && provider !== "twilio" && provider !== "quo")
+    return [];
   if (!options.identityLockHeld) {
     await lockSmsDeliveryIdentity(tx, provider, providerMessageId);
   }

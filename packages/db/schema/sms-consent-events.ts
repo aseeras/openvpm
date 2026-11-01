@@ -135,7 +135,7 @@ export const smsConsentEvents = pgTable(
           ${table.actorType} = 'client'
           and ${table.actorUserId} is null
           and ${table.actorName} is null
-          and ${table.provider} in ('telnyx', 'twilio')
+          and ${table.provider} in ('telnyx', 'twilio', 'quo')
           and length(btrim(coalesce(${table.providerMessageId}, ''))) > 0
         ) or (
           ${table.actorType} = 'system'
