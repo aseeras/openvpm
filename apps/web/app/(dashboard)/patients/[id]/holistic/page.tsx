@@ -10,6 +10,7 @@ import {
   Camera,
   Check,
   Copy,
+  Glasses,
   Loader2,
   Sparkles,
 } from "lucide-react";
@@ -33,6 +34,11 @@ import {
   CLIENT_UPLOAD_TIMEOUT_MS,
   fetchWithClientTimeout,
 } from "@/lib/client-fetch";
+import {
+  captureGlassesPhoto,
+  glassesAvailable,
+  GLASSES_CAPTURE_EVENT,
+} from "@/lib/glasses/native-glasses";
 
 const MODALITY_STORAGE_KEY = "openvpm.holistic.modalities";
 const PHOTO_MAX_EDGE_PX = 1600;
@@ -108,10 +114,23 @@ export default function HolisticWorkupPage() {
     { enabled: !!patientId && allowed },
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [hasGlasses, setHasGlasses] = useState(false);
+  const [glassesBusy, setGlassesBusy] = useState(false);
+  const glassesBusyRef = useRef(false);
+  const takeGlassesPhotoRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     setModalities(readSavedModalities());
+    setHasGlasses(glassesAvailable());
   }, []);
+
+  // "Hey Meta, start ZenPaws" on the glasses takes a photo for this patient.
+  useEffect(() => {
+    if (!allowed) return;
+    const onCapture = () => void takeGlassesPhotoRef.current?.();
+    window.addEventListener(GLASSES_CAPTURE_EVENT, onCapture);
+    return () => window.removeEventListener(GLASSES_CAPTURE_EVENT, onCapture);
+  }, [allowed]);
 
   const draft = trpc.holistic.draftWorkup.useMutation({
     onError: (err) => toast.error(err.message),
@@ -145,6 +164,10 @@ export default function HolisticWorkupPage() {
   async function handleTakePhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const chosen = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
+    await uploadPhotos(chosen);
+  }
+
+  async function uploadPhotos(chosen: File[]) {
     if (chosen.length === 0) return;
     setUploading(true);
     try {
@@ -182,6 +205,21 @@ export default function HolisticWorkupPage() {
       setUploading(false);
     }
   }
+
+  async function takeGlassesPhoto() {
+    if (glassesBusyRef.current) return;
+    glassesBusyRef.current = true;
+    setGlassesBusy(true);
+    try {
+      const result = await captureGlassesPhoto();
+      if (result.status === "error") toast.error(result.message);
+      if (result.status === "ok") await uploadPhotos([result.file]);
+    } finally {
+      glassesBusyRef.current = false;
+      setGlassesBusy(false);
+    }
+  }
+  takeGlassesPhotoRef.current = takeGlassesPhoto;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -349,6 +387,22 @@ export default function HolisticWorkupPage() {
                 )}
                 Take or add photo
               </Button>
+              {hasGlasses && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploading || glassesBusy}
+                  onClick={() => void takeGlassesPhoto()}
+                >
+                  {glassesBusy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Glasses className="mr-2 h-4 w-4" />
+                  )}
+                  Take with glasses
+                </Button>
+              )}
               <CapturePhotos patientId={patientId} />
             </div>
           </div>
