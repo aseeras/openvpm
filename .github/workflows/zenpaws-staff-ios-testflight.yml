@@ -16,7 +16,8 @@ on:
       - ".github/workflows/zenpaws-staff-ios-testflight.yml"
 
 concurrency:
-  group: zenpaws-staff-ios-testflight
+  # Shared with the client app build: each revokes the other's old certificates.
+  group: zenpaws-ios-signing
   cancel-in-progress: false
 
 jobs:
@@ -67,6 +68,11 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npx cap sync ios
+
+      # Each build makes a new development certificate on its fresh runner;
+      # revoke the ones earlier builds left so Apple's limit is never reached.
+      - name: Revoke development certificates from earlier builds
+        run: node scripts/clean-ci-certificates.mjs
 
       - name: Write the App Store Connect key
         run: |
