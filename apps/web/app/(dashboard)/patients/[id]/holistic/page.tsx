@@ -25,6 +25,7 @@ import { MODALITIES, type Modality } from "@/lib/holistic/tcm-reference";
 import {
   formatTcmWorkupAsText,
   TCM_WORKUP_MAX_PHOTOS,
+  type TcmDiagnosticAssessment,
   type TcmPointPlan,
   type TcmWorkup,
 } from "@/lib/holistic/tcm-workup-shared";
@@ -101,6 +102,11 @@ export default function HolisticWorkupPage() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [useCheckIn, setUseCheckIn] = useState(true);
+  const checkIn = trpc.checkIns.latestSummaryForPatient.useQuery(
+    { patientId },
+    { enabled: !!patientId && allowed },
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -179,8 +185,17 @@ export default function HolisticWorkupPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!diagnosis.trim()) {
-      toast.error("Add the diagnosis first.");
+    const hasCheckIn = useCheckIn && Boolean(checkIn.data?.summary);
+    if (
+      !diagnosis.trim() &&
+      !complaint.trim() &&
+      !tongue.trim() &&
+      !pulse.trim() &&
+      !otherFindings.trim() &&
+      selectedPhotoIds.length === 0 &&
+      !hasCheckIn
+    ) {
+      toast.error("Add a diagnosis, findings, or a photo first.");
       return;
     }
     if (modalities.length === 0) {
@@ -191,6 +206,7 @@ export default function HolisticWorkupPage() {
     draft.mutate({
       patientId,
       conventionalDiagnosis: diagnosis,
+      includeOwnerCheckIn: useCheckIn,
       presentingComplaint: complaint,
       tongue,
       pulse,
@@ -247,7 +263,11 @@ export default function HolisticWorkupPage() {
         <section className="space-y-3 rounded-xl border border-border bg-card p-4">
           <h3 className="font-heading text-base font-semibold">Findings</h3>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Diagnosis *</span>
+            <span className="text-sm font-medium">Your diagnosis (optional)</span>
+            <span className="block text-xs text-muted-foreground">
+              Leave blank to have the AI suggest possible diagnoses from
+              everything else.
+            </span>
             <Textarea
               value={diagnosis}
               onChange={(e) => setDiagnosis(e.target.value)}
@@ -373,6 +393,38 @@ export default function HolisticWorkupPage() {
         </section>
 
         <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-heading text-base font-semibold">Owner check-in</h3>
+            {checkIn.data?.summary && (
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={useCheckIn}
+                  onChange={(e) => setUseCheckIn(e.target.checked)}
+                />
+                Use in the workup
+              </label>
+            )}
+          </div>
+          {checkIn.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : checkIn.data?.summary ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Owner-reported, submitted{" "}
+                {new Date(checkIn.data.submittedAt).toLocaleDateString()}.
+              </p>
+              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted/40 p-3 font-sans text-xs">
+                {checkIn.data.summary}
+              </pre>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No check-in from the owner yet.
+            </p>
+          )}
+        </section>
+
+        <section className="space-y-3 rounded-xl border border-border bg-card p-4">
           <h3 className="font-heading text-base font-semibold">Treatments we offer</h3>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
             {MODALITIES.map((m) => (
@@ -437,6 +489,78 @@ function PointList({ points }: { points: TcmPointPlan[] }) {
   );
 }
 
+const LIKELIHOOD_VARIANT = {
+  high: "success",
+  moderate: "info",
+  low: "outline",
+} as const;
+
+function DiagnosticSection({
+  diagnostic,
+}: {
+  diagnostic: TcmDiagnosticAssessment;
+}) {
+  return (
+    <Section title="AI diagnostic assessment">
+      <p className="text-xs text-muted-foreground">
+        Suggestions from the inputs above, for the veterinarian to confirm. Not
+        a final diagnosis.
+      </p>
+      {diagnostic.redFlags.length > 0 && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+          <p className="font-semibold">Needs prompt attention</p>
+          <ul className="ml-5 list-disc">
+            {diagnostic.redFlags.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {diagnostic.impression && <p className="text-sm">{diagnostic.impression}</p>}
+      {diagnostic.agreementWithVet && (
+        <p className="text-sm">
+          <span className="font-semibold">Compared with your diagnosis:</span>{" "}
+          {diagnostic.agreementWithVet}
+        </p>
+      )}
+      {diagnostic.differentials.length > 0 && (
+        <ol className="space-y-2">
+          {diagnostic.differentials.map((d, i) => (
+            <li key={d.diagnosis} className="text-sm">
+              <span className="font-semibold">
+                {i + 1}. {d.diagnosis}
+              </span>{" "}
+              <Badge variant={LIKELIHOOD_VARIANT[d.likelihood]}>
+                {d.likelihood} likelihood
+              </Badge>
+              {d.supporting.length > 0 && (
+                <span className="block text-muted-foreground">
+                  For: {d.supporting.join("; ")}
+                </span>
+              )}
+              {d.against.length > 0 && (
+                <span className="block text-muted-foreground">
+                  Against: {d.against.join("; ")}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {diagnostic.recommendedDiagnostics.length > 0 && (
+        <div className="text-sm">
+          <p className="font-semibold">Suggested tests</p>
+          <ul className="ml-5 list-disc">
+            {diagnostic.recommendedDiagnostics.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function WorkupResult({
   workup,
   copied,
@@ -455,6 +579,8 @@ function WorkupResult({
           {copied ? "Copied" : "Copy for visit note"}
         </Button>
       </div>
+
+      {workup.diagnostic && <DiagnosticSection diagnostic={workup.diagnostic} />}
 
       <Section title="TCVM assessment">
         {workup.summary && <p className="text-sm">{workup.summary}</p>}
