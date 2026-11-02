@@ -27,7 +27,7 @@ import {
   TCM_WORKUP_MAX_PHOTOS,
   type TcmPointPlan,
   type TcmWorkup,
-} from "@/lib/holistic/tcm-workup";
+} from "@/lib/holistic/tcm-workup-shared";
 import {
   CLIENT_UPLOAD_TIMEOUT_MS,
   fetchWithClientTimeout,
