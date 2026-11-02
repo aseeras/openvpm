@@ -19,6 +19,7 @@ export const CRON_HEARTBEAT_JOBS = [
   "conversion-reconcile",
   "sms-operations",
   "sms-provider-events",
+  "morning-briefing",
 ] as const;
 
 export type CronHeartbeatJob = (typeof CRON_HEARTBEAT_JOBS)[number];

@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   createRouter,
   protectedProcedure,
   requireFeature,
   requireRole,
 } from "../trpc";
-import { practices } from "@openpims/db";
+import { practices, users } from "@openpims/db";
 import type { Database } from "@openpims/db/client";
 import {
   runAgent,
@@ -21,6 +21,10 @@ import {
   AgentRecoveryHoldError,
 } from "@/lib/agent";
 import { AGENT_INSTRUCTION_MAX_LENGTH } from "@/lib/agent/policy";
+import {
+  MORNING_BRIEFING_ROLES,
+  morningBriefingFromSettings,
+} from "@/lib/agent/morning-briefing";
 import { billingEnforced } from "@/lib/billing/plans";
 import { readHostedAiAccess } from "@/lib/billing/ai-access";
 
@@ -79,6 +83,106 @@ export const agentRouter = createRouter({
     };
   }),
 
+  /**
+   * Morning briefing email: the send time and who gets it. Administrators see
+   * and manage every veterinarian/administrator; a veterinarian only
+   * themselves.
+   */
+  briefingSettings: agentProcedure.query(async ({ ctx }) => {
+      const [practice] = await ctx.db
+        .select({ settings: practices.settings })
+        .from(practices)
+        .where(activePracticeWhere(ctx.practiceId))
+        .limit(1);
+      if (!practice) throw practiceNotFound();
+      const config = morningBriefingFromSettings(practice.settings);
+      const isAdmin = ctx.user.role === "admin";
+      const staff = await ctx.db
+        .select({ id: users.id, name: users.name, role: users.role })
+        .from(users)
+        .where(
+          and(
+            eq(users.practiceId, ctx.practiceId),
+            isNull(users.deletedAt),
+            inArray(users.role, [...MORNING_BRIEFING_ROLES]),
+            ...(isAdmin ? [] : [eq(users.id, ctx.user.id)]),
+          ),
+        )
+        .orderBy(users.name);
+      return {
+        hour: config.hour,
+        canManageOthers: isAdmin,
+        people: staff.map((u) => ({
+          id: u.id,
+          name: u.name,
+          role: u.role,
+          isMe: u.id === ctx.user.id,
+          enabled: Boolean(config.recipients[u.id]),
+        })),
+      };
+    }),
+
+  setBriefing: agentProcedure
+    .input(
+      z.object({
+        userId: z.string().guid(),
+        enabled: z.boolean(),
+        // The send time is practice-wide; only administrators change it.
+        hour: z.number().int().min(0).max(23).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = ctx.user.role === "admin";
+      if (!isAdmin && (input.userId !== ctx.user.id || input.hour !== undefined)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only an administrator can change this for others or set the time.",
+        });
+      }
+      const [target] = await ctx.db
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, input.userId),
+            eq(users.practiceId, ctx.practiceId),
+            isNull(users.deletedAt),
+            inArray(users.role, [...MORNING_BRIEFING_ROLES]),
+          ),
+        )
+        .limit(1);
+      if (!target) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Morning briefings go to veterinarians and administrators only.",
+        });
+      }
+      return ctx.db.transaction(async (tx) => {
+        const [practice] = await tx
+          .select({ settings: practices.settings })
+          .from(practices)
+          .where(activePracticeWhere(ctx.practiceId))
+          .limit(1)
+          .for("update");
+        if (!practice) throw practiceNotFound();
+        const config = morningBriefingFromSettings(practice.settings);
+        const recipients = { ...config.recipients };
+        if (input.enabled) {
+          recipients[input.userId] = recipients[input.userId] ?? { lastSentDate: null };
+        } else {
+          delete recipients[input.userId];
+        }
+        const next = { hour: input.hour ?? config.hour, recipients };
+        await tx
+          .update(practices)
+          .set({
+            settings: sql`coalesce(${practices.settings}, '{}'::jsonb) || ${JSON.stringify({ morningBriefing: next })}::jsonb`,
+          })
+          .where(eq(practices.id, ctx.practiceId));
+        return { hour: next.hour, enabled: input.enabled };
+      });
+    }),
+
   /** Run the OpenVPM Agent against a natural-language instruction. */
   run: agentProcedure
     .input(
@@ -101,6 +205,8 @@ export const agentRouter = createRouter({
           )
           .max(20)
           .optional(),
+        // Answer for speech (Siri): short, no links or Markdown.
+        voice: z.boolean().optional(),
         // What the clinician is looking at, so "this patient" resolves.
         context: z
           .object({
@@ -117,7 +223,7 @@ export const agentRouter = createRouter({
           instruction: input.instruction,
           allowWrites: input.allowWrites,
           history: input.history,
-          hints: input.context,
+          hints: input.voice ? { ...input.context, voice: true } : input.context,
           context: {
             db: ctx.db,
             practiceId: ctx.practiceId,

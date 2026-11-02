@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { Bot, Loader2 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { AgentChat } from "@/components/agent/agent-chat";
+import { MorningBriefingCard } from "@/components/agent/morning-briefing-card";
 import { canRunAgentRole } from "@/components/agent/assistant-launcher";
 import { AGENT_INSTRUCTION_MAX_LENGTH } from "@/lib/agent/policy";
 
@@ -47,15 +48,19 @@ function AgentRunner({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
   const prefilled = useRef(false);
   const [initialInstruction, setInitialInstruction] = useState<string>();
+  const [autoSend, setAutoSend] = useState(false);
 
   // One-shot ?ask= prefill (guides deep-link here with a ready question).
-  // The param is stripped right away so a refresh will not re-fill.
+  // ?send=1 also sends it, so a Siri Shortcut can ask in one step.
+  // The params are stripped right away so a refresh will not re-run.
   useEffect(() => {
     if (prefilled.current || typeof window === "undefined") return;
     prefilled.current = true;
-    const ask = new URLSearchParams(window.location.search).get("ask");
+    const params = new URLSearchParams(window.location.search);
+    const ask = params.get("ask");
     if (ask?.trim()) {
       setInitialInstruction(ask.trim().slice(0, AGENT_INSTRUCTION_MAX_LENGTH));
+      setAutoSend(params.get("send") === "1");
       router.replace("/agent");
     }
   }, [router]);
@@ -74,10 +79,12 @@ function AgentRunner({ isAdmin }: { isAdmin: boolean }) {
           </p>
         </div>
       </div>
+      <MorningBriefingCard />
       <AgentChat
         isAdmin={isAdmin}
         variant="page"
         initialInstruction={initialInstruction}
+        autoSend={autoSend}
       />
     </div>
   );
