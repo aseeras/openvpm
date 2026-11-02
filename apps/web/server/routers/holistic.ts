@@ -29,6 +29,8 @@ import {
 import { PATIENT_PHOTO_CATEGORY } from "@/lib/records/file-kinds";
 import { isAllowedImageUploadMimeType } from "@/lib/upload-security";
 import { getObject } from "@/lib/s3";
+import { latestPatientCheckIn } from "@/lib/check-in/store";
+import { formatCheckInForClinicalContext } from "@/lib/check-in/form";
 import { MODALITIES, type Modality } from "@/lib/holistic/tcm-reference";
 import {
   draftTcmWorkup,
@@ -71,11 +73,10 @@ export const holisticRouter = createRouter({
     .input(
       z.object({
         patientId: z.string().guid(),
-        conventionalDiagnosis: z
-          .string()
-          .trim()
-          .min(1, "Add the diagnosis first.")
-          .max(TCM_WORKUP_TEXT_MAX_LENGTH),
+        /** Optional: without it the AI gives its own diagnostic read. */
+        conventionalDiagnosis: optionalText(TCM_WORKUP_TEXT_MAX_LENGTH),
+        /** Use the owner's latest pre-visit check-in answers. */
+        includeOwnerCheckIn: z.boolean().default(true),
         presentingComplaint: optionalText(TCM_WORKUP_TEXT_MAX_LENGTH),
         tongue: optionalText(TCM_WORKUP_SHORT_TEXT_MAX_LENGTH),
         pulse: optionalText(TCM_WORKUP_SHORT_TEXT_MAX_LENGTH),
@@ -127,6 +128,27 @@ export const holisticRouter = createRouter({
       }
 
       const photoIds = [...new Set(input.photoIds)];
+      const checkIn = input.includeOwnerCheckIn
+        ? await latestPatientCheckIn(ctx.db, practiceId, input.patientId)
+        : null;
+      const checkInSummary = checkIn
+        ? formatCheckInForClinicalContext(checkIn.answers)
+        : "";
+      const hasEvidence =
+        Boolean(input.conventionalDiagnosis) ||
+        Boolean(input.presentingComplaint) ||
+        Boolean(input.tongue) ||
+        Boolean(input.pulse) ||
+        Boolean(input.otherFindings) ||
+        photoIds.length > 0 ||
+        checkInSummary.length > 0;
+      if (!hasEvidence) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Add a diagnosis, findings, or a photo first. There is no owner check-in to work from.",
+        });
+      }
       const [allergies, problems, meds, assessments, [latestVitals], photoRows] =
         await Promise.all([
           ctx.db
@@ -297,6 +319,12 @@ export const holisticRouter = createRouter({
             .map((a) => (a.assessment ?? "").trim().slice(0, 600))
             .filter(Boolean),
           conventionalDiagnosis: input.conventionalDiagnosis,
+          ownerCheckIn: checkInSummary
+            ? {
+                submittedAt: checkIn!.submittedAt.toISOString().slice(0, 10),
+                summary: checkInSummary,
+              }
+            : undefined,
           presentingComplaint: input.presentingComplaint,
           tongue: input.tongue,
           pulse: input.pulse,
