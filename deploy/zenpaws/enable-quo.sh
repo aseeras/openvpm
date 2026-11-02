@@ -71,10 +71,23 @@ set_env QUO_API_KEY "$KEY"
 unset KEY
 
 # 3. Webhook (created once; Quo shows its signing secret only at creation).
+EVENTS='["message.received","message.delivered","message.failed","message.undelivered","call.completed","call.voicemail.completed","call.summary.completed"]'
 if [ -n "$(env_value QUO_WEBHOOK_SECRET)" ]; then
-  echo "Quo webhook already set up; keeping it."
+  # Keep the webhook (and its secret), but make sure it sends every event
+  # this version of OpenVPM understands.
+  HOOK_ID="$(curl -fsS -H "Authorization: $(env_value QUO_API_KEY)" -H "Quo-Api-Version: $QUO_VERSION" "$QUO_API/webhooks" \
+    | WEBHOOK_URL="$WEBHOOK_URL" json_get '
+import os
+rows = [w for w in d.get("data", []) if w.get("url") == os.environ["WEBHOOK_URL"]]
+print(rows[0]["id"] if len(rows) == 1 else "")' || true)"
+  if [ -n "$HOOK_ID" ] && curl -fsS -o /dev/null -X PATCH -H "Authorization: $(env_value QUO_API_KEY)" -H "Quo-Api-Version: $QUO_VERSION" \
+      -H "Content-Type: application/json" -d "{\"events\": $EVENTS}" "$QUO_API/webhooks/$HOOK_ID"; then
+    echo "Quo webhook already set up; its events are up to date."
+  else
+    echo "Quo webhook already set up, but its events could not be updated. In Quo > Settings > Webhooks, make sure the OpenVPM webhook includes: $EVENTS"
+  fi
 else
-  BODY="$(python3 -c 'import json,sys; print(json.dumps({"url": sys.argv[1], "label": "OpenVPM", "resourceIds": [sys.argv[2]], "events": ["message.received","message.delivered","message.failed","message.undelivered","call.completed","call.voicemail.completed"]}))' "$WEBHOOK_URL" "$PHONE_ID")"
+  BODY="$(python3 -c 'import json,sys; print(json.dumps({"url": sys.argv[1], "label": "OpenVPM", "resourceIds": [sys.argv[2]], "events": json.loads(sys.argv[3])}))' "$WEBHOOK_URL" "$PHONE_ID" "$EVENTS")"
   if ! CREATED="$(curl -fsS -X POST -H "Authorization: $(env_value QUO_API_KEY)" -H "Quo-Api-Version: $QUO_VERSION" \
       -H "Content-Type: application/json" -d "$BODY" "$QUO_API/webhooks")"; then
     echo "Quo would not create the webhook. Nothing else was changed; the API key is saved, so just run this again."

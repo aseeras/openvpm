@@ -224,4 +224,40 @@ describe("Quo call inbox entries", () => {
     );
     expect(quoCallDedupeKey(activity)).toBe("quo:voicemail:VM1");
   });
+  it("labels calls Quo's AI agent answered", () => {
+    const entry = describeQuoCallActivity({
+      ...base,
+      kind: "call",
+      callId: "AC3",
+      direction: "inbound",
+      status: "ai-handled",
+      durationSeconds: 61,
+      hasVoicemail: false,
+    });
+    expect(entry.subject).toBe("Call from (813) 555-0123");
+    expect(entry.content).toBe(
+      "Incoming call: answered by Quo's AI agent, 1:01 long.",
+    );
+  });
+
+  it("lists what the caller told Quo's AI agent", () => {
+    const activity = {
+      ...base,
+      kind: "summary" as const,
+      callId: "AC4",
+      handledByAiAgent: true,
+      summary: ["Caller wants acupuncture for her dog."],
+      nextSteps: ["Call back to book."],
+      details: [
+        { name: "Name", value: "Jane Doe" },
+        { name: "Pet", value: "Luna" },
+      ],
+    };
+    const entry = describeQuoCallActivity(activity);
+    expect(entry.subject).toBe("AI agent call notes: (813) 555-0123");
+    expect(entry.content).toBe(
+      "Name: Jane Doe\nPet: Luna\n\nSummary:\n- Caller wants acupuncture for her dog.\n\nNext steps:\n- Call back to book.",
+    );
+    expect(quoCallDedupeKey(activity)).toBe("quo:summary:AC4");
+  });
 });

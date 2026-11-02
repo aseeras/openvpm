@@ -205,6 +205,55 @@ describe("Quo webhook", () => {
     );
   });
 
+  it("logs the AI agent's call notes once the summary is ready", async () => {
+    const summaryEvent = (processingStatus: string) => ({
+      id: "EV6",
+      type: "call.summary.completed",
+      createdAt: "2026-11-01T12:02:00.000Z",
+      data: {
+        resource: {
+          callId: "AC-call",
+          processingStatus,
+          summary: ["Caller wants a visit."],
+          nextSteps: ["Call back."],
+          fromPhoneNumber: null,
+          handledByAiAgent: true,
+          jobs: [
+            {
+              name: "Intake",
+              result: {
+                data: [
+                  { name: "Name", value: "Jane" },
+                  { name: "Pets", value: 2 },
+                ],
+              },
+            },
+          ],
+        },
+        context,
+      },
+    });
+    await POST(signedRequest(summaryEvent("in-progress")));
+    expect(mocks.logQuoCallActivity).not.toHaveBeenCalled();
+
+    await POST(signedRequest(summaryEvent("completed")));
+    expect(mocks.logQuoCallActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "summary",
+        callId: "AC-call",
+        phoneNumberId: "PN1",
+        externalPhone: "+15555550199",
+        handledByAiAgent: true,
+        summary: ["Caller wants a visit."],
+        nextSteps: ["Call back."],
+        details: [
+          { name: "Name", value: "Jane" },
+          { name: "Pets", value: "2" },
+        ],
+      }),
+    );
+  });
+
   it("acknowledges events it does not use", async () => {
     const response = await POST(
       signedRequest({
