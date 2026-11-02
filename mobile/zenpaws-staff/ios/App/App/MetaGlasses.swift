@@ -90,9 +90,18 @@ final class GlassesSession {
         }
         end()
 
+        // The selector learns which glasses are usable from a stream, so a
+        // session created straight away finds no eligible device. Wait for it.
+        let selector = AutoDeviceSelector(wearables: wearables)
+        guard await Self.waitForActiveDevice(selector) else {
+            throw GlassesFailure(message: Self.notReadyMessage(wearables))
+        }
+
         let created: DeviceSession
         do {
-            created = try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables))
+            created = try wearables.createSession(deviceSelector: selector)
+        } catch DeviceSessionError.noEligibleDevice {
+            throw GlassesFailure(message: Self.notReadyMessage(wearables))
         } catch DeviceSessionError.datAppOnTheGlassesUpdateRequired {
             throw GlassesFailure(message: "The glasses need a software update. Update them in the Meta AI app, then try again.")
         } catch {
@@ -154,6 +163,46 @@ final class GlassesSession {
             throw GlassesFailure(message: "Couldn't open the Meta AI app: \(MetaGlasses.describe(error))")
         }
         throw GlassesFailure(message: "Allow ZenPaws in the Meta AI app, then come back and try again.")
+    }
+
+    private static let deviceTimeoutSeconds: UInt64 = 15
+
+    private static func waitForActiveDevice(_ selector: AutoDeviceSelector) async -> Bool {
+        if selector.activeDevice != nil { return true }
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await device in selector.activeDeviceStream() where device != nil {
+                    return true
+                }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: deviceTimeoutSeconds * 1_000_000_000)
+                return false
+            }
+            let found = await group.next() ?? false
+            group.cancelAll()
+            return found
+        }
+    }
+
+    /// Why paired glasses can't be used right now, in the vet's words.
+    private static func notReadyMessage(_ wearables: any WearablesInterface) -> String {
+        let devices = wearables.devices.compactMap { wearables.deviceForIdentifier($0) }
+        for device in devices {
+            NSLog("[glasses] \(device.nameOrId()): link \(device.linkState), compatibility \(device.compatibility())")
+        }
+        if devices.contains(where: { $0.compatibility() == .deviceUpdateRequired }) {
+            return "Your glasses need a software update. Update them in the Meta AI app, then try again."
+        }
+        if devices.contains(where: { $0.compatibility() == .sdkUpdateRequired }) {
+            return "Your glasses' software is newer than this ZenPaws build supports. ZenPaws needs an update."
+        }
+        if !devices.contains(where: { $0.linkState == .connected }) {
+            return "Your glasses aren't connected right now. Put them on, open the Meta AI app until they show as connected, then come back and try again."
+        }
+        let details = devices.map { "\($0.nameOrId()): \($0.linkState), \($0.compatibility())" }.joined(separator: "; ")
+        return "Your glasses aren't ready for ZenPaws yet (\(details)). Check Developer Mode is on in Meta AI, then try again."
     }
 
     private static func waitUntilStarted(
