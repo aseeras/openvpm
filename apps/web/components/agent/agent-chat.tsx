@@ -313,6 +313,8 @@ export function AgentChat({
           The agent is not available right now. We are on it. Please check back
           soon.
         </p>
+      ) : verifiedAgentStatus?.setupHint ? (
+        <p>{verifiedAgentStatus.setupHint}</p>
       ) : (
         <p>
           Configure Google Vertex AI with{" "}
