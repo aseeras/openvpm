@@ -27,6 +27,9 @@ const body = z.object({
 });
 
 function reply(answer: string, status = 200) {
+  // Outcome only, never the question or answer, so the server log can show
+  // whether voice requests arrive and how they end.
+  console.info(`[assistant.ask] status=${status}`);
   return NextResponse.json({ answer }, { status, headers: NO_STORE });
 }
 

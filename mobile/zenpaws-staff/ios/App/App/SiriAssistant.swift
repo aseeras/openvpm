@@ -45,9 +45,31 @@ enum ClinicAssistant {
 
     /// The clinic site's cookies from the app's web view, which hold the
     /// staff member's sign-in.
+    ///
+    /// When Siri starts the app in the background no web view exists yet,
+    /// and WebKit's cookie store may not answer until one does, so a hidden
+    /// web view is created first and the read gives up after a few seconds.
     @MainActor
     private static func signInCookies() async -> [HTTPCookie] {
-        let all = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        let store = WKWebsiteDataStore.default()
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = store
+        let keepAlive = WKWebView(frame: .zero, configuration: configuration)
+        defer { _ = keepAlive }
+
+        let all: [HTTPCookie] = await withCheckedContinuation { continuation in
+            var finished = false
+            let finish: ([HTTPCookie]) -> Void = { cookies in
+                guard !finished else { return }
+                finished = true
+                continuation.resume(returning: cookies)
+            }
+            store.httpCookieStore.getAllCookies { cookies in
+                DispatchQueue.main.async { finish(cookies) }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { finish([]) }
+        }
+
         let host = baseURL.host ?? ""
         return all.filter { cookie in
             let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
