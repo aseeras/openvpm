@@ -29,6 +29,7 @@ enum MetaGlasses {
             return
         }
         Task { @MainActor in
+            GlassesLog.begin()
             GlassesSession.shared.warmUp()
             GlassesVoice.shared.begin()
         }
@@ -107,6 +108,8 @@ final class GlassesSession {
         // session created straight away finds no eligible device. Wait for it.
         warmUp()
         guard let selector, await Self.waitForActiveDevice(selector) else {
+            GlassesLog.add("no active device after \(Self.deviceTimeoutSeconds)s")
+            GlassesLog.offerToShare()
             throw GlassesFailure(message: Self.notReadyMessage(wearables))
         }
 
@@ -114,6 +117,8 @@ final class GlassesSession {
         do {
             created = try wearables.createSession(deviceSelector: selector)
         } catch DeviceSessionError.noEligibleDevice {
+            GlassesLog.add("createSession: no eligible device")
+            GlassesLog.offerToShare()
             throw GlassesFailure(message: Self.notReadyMessage(wearables))
         } catch DeviceSessionError.datAppOnTheGlassesUpdateRequired {
             throw GlassesFailure(message: "The glasses need a software update. Update them in the Meta AI app, then try again.")
@@ -203,7 +208,7 @@ final class GlassesSession {
     private static func notReadyMessage(_ wearables: any WearablesInterface) -> String {
         let devices = wearables.devices.compactMap { wearables.deviceForIdentifier($0) }
         for device in devices {
-            NSLog("[glasses] \(device.nameOrId()): link \(device.linkState), compatibility \(device.compatibility())")
+            GlassesLog.describe(device)
         }
         // Short enough for the page to show in full (it hides long messages).
         let summary = devices.isEmpty
@@ -243,6 +248,160 @@ final class GlassesSession {
             group.cancelAll()
             return started
         }
+    }
+}
+
+/// What the toolkit reports about the glasses from launch on: registration,
+/// each pair's link and compatibility. When the glasses won't connect, the
+/// vet can share it (with the toolkit's own log) with whoever is helping.
+/// It stays on the phone unless shared.
+@MainActor
+enum GlassesLog {
+    private static var lines: [String] = []
+    private static let tokens = ListenerTokenBag()
+    private static var watched = Set<DeviceIdentifier>()
+    private static var started = false
+    private static var offering = false
+    private static let stamp: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static func add(_ line: String) {
+        lines.append("\(stamp.string(from: Date())) \(line)")
+        if lines.count > 500 { lines.removeFirst(lines.count - 500) }
+        NSLog("[glasses] \(line)")
+    }
+
+    static func begin() {
+        guard !started else { return }
+        started = true
+        let info = Bundle.main.infoDictionary ?? [:]
+        let wearables = Wearables.shared
+        add("ZenPaws \(info["CFBundleShortVersionString"] ?? "?") (\(info["CFBundleVersion"] ?? "?")), iOS \(UIDevice.current.systemVersion)")
+        add("registration \(name(wearables.registrationState)), devices \(wearables.devices.count)")
+        Task { @MainActor in
+            for await state in wearables.registrationStateStream() {
+                add("registration -> \(name(state))")
+            }
+        }
+        Task { @MainActor in
+            for await ids in wearables.devicesStream() {
+                add("devices -> \(ids.count)")
+                ids.forEach(watch)
+            }
+        }
+    }
+
+    private static func name(_ state: RegistrationState) -> String {
+        switch state {
+        case .unavailable: return "unavailable"
+        case .available: return "available"
+        case .registering: return "registering"
+        case .registered: return "registered"
+        }
+    }
+
+    private static func watch(_ id: DeviceIdentifier) {
+        guard let device = Wearables.shared.deviceForIdentifier(id) else {
+            add("device \(id): no details")
+            return
+        }
+        describe(device)
+        guard !watched.contains(id) else { return }
+        watched.insert(id)
+        let label = device.nameOrId()
+        device.addLinkStateListener { state in
+            Task { @MainActor in add("\(label) link -> \(state)") }
+        }.store(in: tokens)
+        device.addCompatibilityListener { compatibility in
+            Task { @MainActor in add("\(label) compatibility -> \(compatibility)") }
+        }.store(in: tokens)
+    }
+
+    static func describe(_ device: Device) {
+        add("\(device.nameOrId()): type \(device.deviceType()), link \(device.linkState), compatibility \(device.compatibility()), display \(device.supportsDisplay())")
+    }
+
+    /// Asks once per failure whether to share the log.
+    static func offerToShare() {
+        guard !offering, let top = topViewController() else { return }
+        offering = true
+        let alert = UIAlertController(
+            title: "Glasses didn't connect",
+            message: "Share the glasses log so the problem can be found? It lists the glasses and what Meta's toolkit reported, no patient information.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Not now", style: .cancel) { _ in offering = false })
+        alert.addAction(UIAlertAction(title: "Share log", style: .default) { _ in
+            Task { @MainActor in
+                await share()
+                offering = false
+            }
+        })
+        top.present(alert, animated: true)
+    }
+
+    private static func share() async {
+        let wearables = Wearables.shared
+        add("--- shared: registration \(name(wearables.registrationState)), devices \(wearables.devices.count)")
+        for id in wearables.devices {
+            if let device = wearables.deviceForIdentifier(id) { describe(device) }
+        }
+        if let camera = try? await wearables.checkPermissionStatus(.camera) {
+            add("camera permission \(camera)")
+        }
+        var text = lines.joined(separator: "\n")
+        for url in toolkitLogFiles() {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let tail = data.suffix(400_000)
+            text += "\n\n===== \(url.lastPathComponent) (\(data.count) bytes, last \(tail.count)) =====\n"
+            text += String(decoding: tail, as: UTF8.self)
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = folder.appendingPathComponent("zenpaws-glasses-log.txt")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try text.write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            add("couldn't write log: \(error.localizedDescription)")
+            return
+        }
+        guard let top = topViewController() else { return }
+        let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+        sheet.completionWithItemsHandler = { _, _, _, _ in
+            try? FileManager.default.removeItem(at: folder)
+        }
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = top.view
+            popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        top.present(sheet, animated: true)
+    }
+
+    /// The toolkit writes its own log under a MetaWearablesDAT folder in the
+    /// app's container.
+    private static func toolkitLogFiles() -> [URL] {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        guard let walker = FileManager.default.enumerator(at: home, includingPropertiesForKeys: nil) else { return [] }
+        var found: [URL] = []
+        for case let url as URL in walker where url.path.contains("MetaWearablesDAT") {
+            let ext = url.pathExtension.lowercased()
+            if ext == "log" || ext == "txt" { found.append(url) }
+            if found.count >= 5 { break }
+        }
+        return found
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) }
+            .first
+        var top = window?.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        return top
     }
 }
 
