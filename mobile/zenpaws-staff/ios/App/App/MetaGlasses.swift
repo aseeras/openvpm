@@ -28,7 +28,10 @@ enum MetaGlasses {
             NSLog("[glasses] Could not set up the Meta glasses toolkit: \(error)")
             return
         }
-        Task { @MainActor in GlassesVoice.shared.begin() }
+        Task { @MainActor in
+            GlassesSession.shared.warmUp()
+            GlassesVoice.shared.begin()
+        }
     }
 
     /// Links from Meta AI carry a `metaWearablesAction` query item.
@@ -78,6 +81,16 @@ final class GlassesSession {
     /// Called when the glasses disconnect or the session ends on its own.
     var onEnded: (() -> Void)?
 
+    /// One selector for the life of the app, as in Meta's samples: it follows
+    /// the glasses' connection from launch, so it already knows which pair is
+    /// usable when the vet asks for a photo.
+    private var selector: AutoDeviceSelector?
+
+    func warmUp() {
+        guard selector == nil else { return }
+        selector = AutoDeviceSelector(wearables: Wearables.shared)
+    }
+
     func acquire(_ holder: Holder) async throws -> DeviceSession {
         let wearables = Wearables.shared
         try await Self.ensureRegistered(wearables)
@@ -92,8 +105,8 @@ final class GlassesSession {
 
         // The selector learns which glasses are usable from a stream, so a
         // session created straight away finds no eligible device. Wait for it.
-        let selector = AutoDeviceSelector(wearables: wearables)
-        guard await Self.waitForActiveDevice(selector) else {
+        warmUp()
+        guard let selector, await Self.waitForActiveDevice(selector) else {
             throw GlassesFailure(message: Self.notReadyMessage(wearables))
         }
 
@@ -165,7 +178,7 @@ final class GlassesSession {
         throw GlassesFailure(message: "Allow ZenPaws in the Meta AI app, then come back and try again.")
     }
 
-    private static let deviceTimeoutSeconds: UInt64 = 15
+    private static let deviceTimeoutSeconds: UInt64 = 25
 
     private static func waitForActiveDevice(_ selector: AutoDeviceSelector) async -> Bool {
         if selector.activeDevice != nil { return true }

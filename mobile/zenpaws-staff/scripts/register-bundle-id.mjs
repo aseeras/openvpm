@@ -75,6 +75,9 @@ async function turnOn(capabilityType, label, settings) {
 }
 
 await turnOn("ASSOCIATED_DOMAINS", "Associated Domains");
+// Meta glasses send photos over a direct Wi-Fi link that the toolkit sets up.
+await turnOn("HOT_SPOT", "Hotspot Configuration");
+await turnOn("ACCESS_WIFI_INFORMATION", "Access Wi-Fi Information");
 // Sign in with Apple, as its own primary app (not grouped with another app).
 await turnOn("APPLE_ID_AUTH", "Sign in with Apple", [
   { key: "APPLE_ID_AUTH_APP_CONSENT", options: [{ key: "PRIMARY_APP_CONSENT" }] },
