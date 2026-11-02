@@ -39,7 +39,7 @@ describe("welcome card visibility", () => {
   });
 
   it("matches the agent page's own role gate", () => {
-    // agent/page.tsx canRunAgentRole: admin | veterinarian only.
+    // components/agent/assistant-launcher.tsx canRunAgentRole: admin | veterinarian only.
     expect(canRunAgentGuideRole("admin")).toBe(true);
     expect(canRunAgentGuideRole("veterinarian")).toBe(true);
     expect(canRunAgentGuideRole("technician")).toBe(false);

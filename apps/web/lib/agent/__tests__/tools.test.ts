@@ -103,6 +103,7 @@ describe("agent tool registry", () => {
     expect(writeTools).toEqual([
       "book_appointment",
       "record_vital_signs",
+      "save_soap_draft",
     ]);
   });
 
@@ -117,6 +118,7 @@ describe("agent tool registry", () => {
     expect(writeToolScopes).toEqual({
       book_appointment: ["appointments:write"],
       record_vital_signs: ["records:write"],
+      save_soap_draft: ["records:write"],
     });
   });
 
@@ -578,7 +580,10 @@ describe("find_open_slots validation", () => {
 });
 
 describe("agent read tool query safety", () => {
-  const source = readFileSync(new URL("../tools.ts", import.meta.url), "utf8");
+  // Shared helpers (practice time zone lookup) live in tool-kit.ts.
+  const source =
+    readFileSync(new URL("../tools.ts", import.meta.url), "utf8") +
+    readFileSync(new URL("../tool-kit.ts", import.meta.url), "utf8");
 
   function scopedJoinPattern(
     joinMethod: "innerJoin" | "leftJoin",

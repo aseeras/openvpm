@@ -15,6 +15,7 @@ import {
   type AgentTool,
   type AgentToolContext,
 } from "./tools";
+import { practiceTimeZone } from "./tool-kit";
 import { recordUsage } from "@/lib/billing/usage";
 import { readHostedAiAccess } from "@/lib/billing/ai-access";
 import { rateLimit } from "@/lib/rate-limit";
@@ -31,8 +32,9 @@ import {
  * directly, and the SDK runs the tool-use loop for us up to MAX_ITERATIONS.
  */
 const DEFAULT_MODEL = "gemini-3.5-flash";
-const MAX_ITERATIONS = 8;
-const MAX_OUTPUT_TOKENS = 1024;
+const MAX_ITERATIONS = 10;
+// Room for a full SOAP draft passed as tool input plus the reply.
+const MAX_OUTPUT_TOKENS = 4096;
 export const AGENT_RUN_RATE_WINDOW_MS = 60_000;
 export const AGENT_RUN_ACTOR_RATE_LIMIT = 20;
 export const AGENT_RUN_PRACTICE_RATE_LIMIT = 120;
@@ -44,7 +46,59 @@ You help practice staff by using the provided tools to read and act on practice 
 - You operate on a single practice's data; you cannot see other practices.
 - For any drug dose, use calculate_drug_dose and present it as a reference range that the prescribing clinician must verify. Never present a dose as a final prescribing decision.
 - Before booking an appointment, confirm you have the right client and patient (use find_client / get_patient_summary first when ids are not given).
-- Be concise and clinical. Surface warnings the tools return.`;
+- Be concise and clinical. Surface warnings the tools return.
+- When a tool returns a link (chartLink, visitLink, directions, link), include it as a Markdown link, e.g. [Open Bella's chart](/patients/…), so the clinician can tap through.
+- For SOAP notes: organize only what the clinician told you into a draft with save_soap_draft. Never finalize, never add findings they did not state, and remind them to review and sign in the visit.
+- You cannot prescribe, record refills, or send messages to clients. Prepare the information and link to where the clinician does it.
+- If a change is needed but write tools are disabled for this run, say exactly what you would save and ask the clinician to allow the change.`;
+
+export interface AgentRunContextHints {
+  /** Patient the clinician is looking at in the app, if any. */
+  patientId?: string;
+  /** Visit (appointment) the clinician is looking at, if any. */
+  appointmentId?: string;
+}
+
+/** Per-run context appended to the system prompt: who, when, and where. */
+export function buildRunContextPrompt(input: {
+  now: Date;
+  timeZone: string | null;
+  staffUser?: { name: string; role: string };
+  hints?: AgentRunContextHints;
+}): string {
+  const timeZone = input.timeZone ?? "UTC";
+  let nowText: string;
+  try {
+    nowText = new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+    }).format(input.now);
+  } catch {
+    nowText = input.now.toISOString();
+  }
+  const lines = [`Current date and time: ${nowText} (${timeZone}).`];
+  if (input.staffUser) {
+    lines.push(
+      `You are helping ${input.staffUser.name} (role: ${input.staffUser.role}). "My" and "me" refer to them.`,
+    );
+  }
+  if (input.hints?.patientId) {
+    lines.push(
+      `They are currently viewing patient ${input.hints.patientId}; "this patient" or "this pet" means that patient.`,
+    );
+  }
+  if (input.hints?.appointmentId) {
+    lines.push(
+      `They are currently viewing visit (appointment) ${input.hints.appointmentId}; "this visit" means that appointment.`,
+    );
+  }
+  return lines.join("\n");
+}
 
 export interface AgentToolCall {
   name: string;
@@ -308,7 +362,9 @@ function buildToolSet(
   apiKeyScopes: string[] | undefined,
   sink: AgentToolCall[],
 ): ToolSet {
-  const entries = AGENT_TOOLS.map(
+  const entries = AGENT_TOOLS.filter(
+    (t) => !t.requiresStaffUser || Boolean(ctx.staffUser),
+  ).map(
     (t) =>
       [
         t.name,
@@ -359,6 +415,8 @@ export async function runAgent(opts: {
   model?: string;
   /** Prior conversation turns, oldest first, for multi-turn chat context. */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** What the clinician is looking at in the app, for "this patient". */
+  hints?: AgentRunContextHints;
 }): Promise<AgentRunResult> {
   const modelId = activeModelId(opts.model);
   if (!hasProviderConfiguration(modelId)) throw new AgentNotConfiguredError();
@@ -390,6 +448,12 @@ export async function runAgent(opts: {
   await enforceAgentRunRateLimit(opts.context);
 
   const toolCalls: AgentToolCall[] = [];
+  const system = `${SYSTEM_PROMPT}\n\n${buildRunContextPrompt({
+    now: new Date(),
+    timeZone: await practiceTimeZone(opts.context),
+    staffUser: opts.context.staffUser,
+    hints: opts.hints,
+  })}`;
   // A conversation (with history) uses `messages`; a one-shot run uses `prompt`.
   const messagesInput =
     opts.history && opts.history.length > 0
@@ -402,7 +466,7 @@ export async function runAgent(opts: {
       : { prompt: opts.instruction };
   const result = await generateText({
     model: resolveModel(modelId),
-    system: SYSTEM_PROMPT,
+    system,
     ...messagesInput,
     tools: buildToolSet(
       opts.context,

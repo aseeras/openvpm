@@ -70,6 +70,14 @@ import {
   resolveAppointmentLocation,
   takeAppointmentSchedulingLock,
 } from "@/lib/scheduling/location";
+import {
+  AgentPracticeNotFoundError,
+  clientName,
+  practiceTimeZone,
+  type AgentTool,
+  type AgentToolContext,
+} from "./tool-kit";
+import { VET_ASSISTANT_TOOLS } from "./vet-tools";
 
 /**
  * The agent's "hands": typed tools that operate the practice's data, always
@@ -77,33 +85,13 @@ import {
  * model) and a Zod schema (for runtime validation). Read tools are safe to
  * auto-run; write tools are flagged so the runner can gate them.
  */
-export interface AgentToolContext {
-  db: Database;
-  practiceId: string;
-  userId: string;
-  postCommitEffect?: (effect: (rootDb: Database) => Promise<void>) => void;
-}
-
-export interface AgentTool {
-  name: string;
-  description: string;
-  /** JSON Schema sent to the model as the tool's input_schema. */
-  inputSchema: Record<string, unknown>;
-  /** Runtime validation of the model-supplied args. */
-  zod: z.ZodTypeAny;
-  readOnly: boolean;
-  requiredApiScopes?: AgentWriteApiScope[];
-  execute(args: unknown, ctx: AgentToolContext): Promise<unknown>;
-}
-
-export type AgentWriteApiScope = "appointments:write" | "records:write";
-
-export class AgentPracticeNotFoundError extends Error {
-  constructor() {
-    super("Practice not found");
-    this.name = "AgentPracticeNotFoundError";
-  }
-}
+export {
+  AgentPracticeNotFoundError,
+  type AgentStaffUser,
+  type AgentTool,
+  type AgentToolContext,
+  type AgentWriteApiScope,
+} from "./tool-kit";
 
 export const AGENT_SEARCH_QUERY_MAX_LENGTH = 100;
 export const AGENT_NOTES_MAX_LENGTH = 2000;
@@ -140,28 +128,11 @@ const vitalCapillaryRefillInput = clinicalDecimalInput("Capillary refill", {
   scale: 1,
 });
 
-async function practiceTimeZone(
-  ctx: AgentToolContext
-): Promise<string | null> {
-  const [practice] = await ctx.db
-    .select({ timezone: practices.timezone })
-    .from(practices)
-    .where(and(eq(practices.id, ctx.practiceId), isNull(practices.deletedAt)))
-    .limit(1);
-  if (!practice) {
-    throw new AgentPracticeNotFoundError();
-  }
-  return practice.timezone ?? null;
-}
-
 async function practiceDateInput(ctx: AgentToolContext): Promise<string> {
   const timezone = await practiceTimeZone(ctx);
   return formatDateInputForTimeZone(new Date(), timezone);
 }
 
-function clientName(first?: string | null, last?: string | null): string {
-  return [first, last].filter(Boolean).join(" ");
-}
 
 async function activeClientExists(
   ctx: AgentToolContext,
@@ -480,6 +451,7 @@ const listAppointments: AgentTool = {
         status: appointments.status,
         locationId: appointments.locationId,
         locationName: locations.name,
+        patientId: patients.id,
         patientName: patients.name,
         clientFirst: clients.firstName,
         clientLast: clients.lastName,
@@ -525,6 +497,7 @@ const listAppointments: AgentTool = {
       status: r.status,
       locationId: r.locationId,
       location: r.locationName,
+      patientId: r.patientId,
       patient: r.patientName,
       client: clientName(r.clientFirst, r.clientLast),
     }));
@@ -996,6 +969,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   calculateDrugDose,
   listTreatmentPlans,
   recordVitalSigns,
+  ...VET_ASSISTANT_TOOLS,
 ];
 
 export function getTool(name: string): AgentTool | undefined {

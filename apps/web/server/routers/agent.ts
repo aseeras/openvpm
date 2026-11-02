@@ -98,6 +98,13 @@ export const agentRouter = createRouter({
           )
           .max(20)
           .optional(),
+        // What the clinician is looking at, so "this patient" resolves.
+        context: z
+          .object({
+            patientId: z.string().guid().optional(),
+            appointmentId: z.string().guid().optional(),
+          })
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -107,10 +114,16 @@ export const agentRouter = createRouter({
           instruction: input.instruction,
           allowWrites: input.allowWrites,
           history: input.history,
+          hints: input.context,
           context: {
             db: ctx.db,
             practiceId: ctx.practiceId,
             userId: ctx.user.id,
+            staffUser: {
+              id: ctx.user.id,
+              name: ctx.user.name,
+              role: ctx.user.role,
+            },
             postCommitEffect: ctx.postCommitEffect,
           },
         });
