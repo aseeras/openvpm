@@ -27,6 +27,19 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
   sets it), and the bundle id needs the Sign in with Apple capability
   (`scripts/register-bundle-id.mjs` turns it on before each build).
 
+- **Meta smart glasses** (`ios/App/App/MetaGlasses.swift`, Ray-Ban Meta,
+  Oakley Meta, Meta Ray-Ban Display) through Meta's Wearables Device Access
+  Toolkit 1.0.1 (Swift package `facebook/meta-wearables-dat-ios`). "Take with
+  glasses" on a patient's holistic workup takes a photo with the glasses and
+  adds it to that patient's clinical photos; "Hey Meta, start ZenPaws" asks the
+  open page for the same photo. The first photo opens the Meta AI app twice:
+  once to allow the app, once to allow the camera. Until the app has a Meta
+  Wearables Developer Center ID, each phone needs Meta AI's Developer Mode
+  (Settings > App Info, tap the version 5 times). With an ID, set the
+  `META_APP_ID` and `META_CLIENT_TOKEN` build settings and invite staff to the
+  integration's release channel. The toolkit needs iOS 17.2, so the app does
+  too. Meta does not yet allow toolkit apps in the App Store, so the
+  app stays on TestFlight internal testing, which has no App Review.
 - **Offline:** `www/offline.html` is shown when the system cannot be reached.
 - **Builds:** `.github/workflows/zenpaws-staff-ios-testflight.yml` archives
   the app on a GitHub macOS runner and uploads it to TestFlight whenever this

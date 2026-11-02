@@ -11,13 +11,38 @@ import AuthenticationServices
 /// - links that open a new tab on the clinic's own site stay in the app, so
 ///   staff stay signed in;
 /// - pull down to reload;
-/// - Sign in with Apple (`StaffAppleSignInPlugin` below).
+/// - Sign in with Apple (`StaffAppleSignInPlugin` below);
+/// - Meta smart glasses photos (`MetaGlasses.swift`).
 class StaffBridgeViewController: CAPBridgeViewController {
     private var webDelegate: StaffWebViewDelegate?
     private let refresh = UIRefreshControl()
 
+    private var glassesCapturePending = false
+
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(StaffAppleSignInPlugin())
+        bridge?.registerPluginInstance(ZenPawsGlassesPlugin())
+    }
+
+    /// "Hey Meta, start ZenPaws": ask the open page to take a glasses photo.
+    /// If the page is still loading, ask once it has loaded.
+    @objc private func glassesCaptureRequested() {
+        guard let webView = webView, !webView.isLoading else {
+            glassesCapturePending = true
+            return
+        }
+        glassesCapturePending = false
+        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('zenpaws:glasses-capture'))")
+    }
+
+    func pageDidFinishLoading() {
+        adoptPageBackground()
+        if glassesCapturePending {
+            // Give the page a moment to start listening.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.glassesCaptureRequested()
+            }
+        }
     }
 
     override func viewDidLoad() {
@@ -48,6 +73,11 @@ class StaffBridgeViewController: CAPBridgeViewController {
         ) { [weak webView] in
             webView?.reload()
         }
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(glassesCaptureRequested),
+            name: MetaGlasses.captureRequested, object: nil
+        )
 
         refresh.addTarget(self, action: #selector(reloadPage), for: .valueChanged)
         webView.scrollView.refreshControl = refresh
@@ -148,7 +178,7 @@ final class StaffWebViewDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, 
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         capacitor.webView(webView, didFinish: navigation)
-        controller?.adoptPageBackground()
+        controller?.pageDidFinishLoading()
     }
 
     // MARK: New tabs
