@@ -68,6 +68,8 @@ final class GlassesMode {
     private var lens: GlassesLens?
     private let speech = GlassesSpeech()
     private var starting = false
+    /// Whether Meta's toolkit connected; without it, glasses mode is voice only.
+    private var linked = false
 
     private init() {
         GlassesSession.shared.onEnded = { [weak self] in
@@ -83,27 +85,40 @@ final class GlassesMode {
         defer { starting = false }
 
         try await speech.prepare()
-        let session: DeviceSession
+        // Talking to the assistant only needs the glasses as a Bluetooth
+        // headset, so glasses mode still starts when Meta's toolkit can't
+        // reach them; only the capture button, the lens and glasses photos
+        // need the toolkit's connection.
+        var session: DeviceSession?
         do {
             session = try await GlassesSession.shared.acquire(.mode)
+        } catch let failure as GlassesFailure {
+            GlassesLog.add("glasses mode without the toolkit: \(failure.message)")
         } catch {
-            speech.finish()
-            throw error
+            GlassesLog.add("glasses mode without the toolkit: \(MetaGlasses.describe(error))")
         }
+        linked = session != nil
 
-        attachInputs(to: session)
-        if session.device?.supportsDisplay() == true {
-            let lens = GlassesLens()
-            if await lens.attach(to: session, onTap: { [weak self] in
-                Task { @MainActor in self?.listen() }
-            }) {
-                self.lens = lens
+        if let session {
+            attachInputs(to: session)
+            if session.device?.supportsDisplay() == true {
+                let lens = GlassesLens()
+                if await lens.attach(to: session, onTap: { [weak self] in
+                    Task { @MainActor in self?.listen() }
+                }) {
+                    self.lens = lens
+                }
             }
         }
         state = State(active: true, display: lens != nil, buttons: inputs != nil)
-        let hint = inputs != nil
-            ? "Press the capture button for a photo, or hold it to talk."
-            : "Tap Talk on the phone to ask me something."
+        let hint: String
+        if inputs != nil {
+            hint = "Press the capture button for a photo, or hold it to talk."
+        } else if linked {
+            hint = "Tap Talk on the phone to ask me something."
+        } else {
+            hint = "Tap Talk on the phone to ask me something. The glasses camera and buttons aren't connected yet."
+        }
         await show(reply: "ZenPaws is on. \(hint)", speak: "ZenPaws is on.")
     }
 
@@ -125,14 +140,16 @@ final class GlassesMode {
         detachInputs()
         lens?.detach()
         lens = nil
-        GlassesSession.shared.release(.mode)
+        if linked { GlassesSession.shared.release(.mode) }
+        linked = false
         speech.finish()
         state = State()
     }
 
     /// The glasses disconnected or were folded.
     private func ended() {
-        guard state.active else { return }
+        guard state.active, linked else { return }
+        linked = false
         speech.cancel()
         inputsTask?.cancel()
         inputsTask = nil
