@@ -63,7 +63,7 @@ DO $$
 DECLARE
   t text;
   tbls text[] := array[
-    'api_keys','appointment_types','appointment_waitlist','appointments','audit_log','booking_pages',
+    'api_keys','appointment_check_ins','appointment_types','appointment_waitlist','appointments','audit_log','booking_pages',
     'capture_sessions','care_reminders','cases','client_contacts','clients','clinical_notes','clinical_record_corrections','communications','consent_forms','consent_receipt_capabilities','consent_requests','controlled_substance_log','dispense_charge_queue','email_suppressions',
     'external_lab_observations','external_lab_reports','external_prescription_fills','external_prescriptions','files','financial_closes','historical_appointments','historical_documents','insurance_claims','insurance_policies','invoices','lab_result_events','lab_result_replacements','lab_results','legacy_financial_allocations','legacy_financial_documents','legacy_financial_line_items','legacy_financial_payments','location_messaging','messaging_registration_events','messaging_registrations','migration_runs',
     'locations','patient_merge_events','patients','payment_disputes','payment_processor_payouts','payment_processor_refunds','payment_processor_settlements','portal_accounts','portal_email_codes','portal_sessions','portal_sign_in_identities','practice_payment_accounts','prescription_events','prescriptions','problem_list','procedures','products','purchase_orders',
@@ -169,6 +169,10 @@ REVOKE ALL ON portal_accounts FROM openpims_app;
 GRANT SELECT, INSERT, UPDATE ON portal_accounts TO openpims_app;
 REVOKE ALL ON portal_email_codes FROM openpims_app;
 GRANT SELECT, INSERT, UPDATE ON portal_email_codes TO openpims_app;
+
+-- Owner check-in forms are retracted by soft delete, never removed.
+REVOKE ALL ON appointment_check_ins FROM openpims_app;
+GRANT SELECT, INSERT, UPDATE ON appointment_check_ins TO openpims_app;
 REVOKE ALL ON FUNCTION public.validate_payment_processor_refund_tenant()
   FROM PUBLIC, openpims_app;
 
@@ -683,7 +687,7 @@ BEGIN
   FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format(
-        'REVOKE ALL ON auth_email_attempts, auth_email_delivery_events, auth_email_provider_identity_conflicts, auth_email_webhook_conflicts, auth_tokens, backup_runs, clinic_pilot_events, clinic_pilots, clinical_record_corrections, demo_accesses, dispense_charge_queue, file_object_replicas, file_storage_events, financial_closes, funnel_events, lab_result_events, lab_result_replacements, messaging_registration_events, patient_allergies, patient_merge_events, payment_disputes, payment_processor_payouts, payment_processor_refunds, payment_processor_settlements, platform_email_identity, platform_email_identity_aliases, platform_email_preference_events, platform_email_preferences, practice_conversion_milestones, prescription_events, recent_clinical_items, sessions, sms_delivery_event_history, sms_delivery_events, sms_provider_event_conflict_reviews, sms_provider_event_conflicts, sms_provider_event_resolutions, sms_provider_events, sms_send_attempt_events, sms_send_attempts, portal_accounts, portal_email_codes, portal_sign_in_identities, stripe_events, telehealth_transcript_consents, telehealth_visits, verification_tokens, visit_recording_consents, visit_recordings FROM %I', r
+        'REVOKE ALL ON auth_email_attempts, appointment_check_ins, auth_email_delivery_events, auth_email_provider_identity_conflicts, auth_email_webhook_conflicts, auth_tokens, backup_runs, clinic_pilot_events, clinic_pilots, clinical_record_corrections, demo_accesses, dispense_charge_queue, file_object_replicas, file_storage_events, financial_closes, funnel_events, lab_result_events, lab_result_replacements, messaging_registration_events, patient_allergies, patient_merge_events, payment_disputes, payment_processor_payouts, payment_processor_refunds, payment_processor_settlements, platform_email_identity, platform_email_identity_aliases, platform_email_preference_events, platform_email_preferences, practice_conversion_milestones, prescription_events, recent_clinical_items, sessions, sms_delivery_event_history, sms_delivery_events, sms_provider_event_conflict_reviews, sms_provider_event_conflicts, sms_provider_event_resolutions, sms_provider_events, sms_send_attempt_events, sms_send_attempts, portal_accounts, portal_email_codes, portal_sign_in_identities, stripe_events, telehealth_transcript_consents, telehealth_visits, verification_tokens, visit_recording_consents, visit_recordings FROM %I', r
       );
       EXECUTE format(
         'REVOKE ALL ON FUNCTION public.validate_payment_processor_refund_tenant() FROM %I', r

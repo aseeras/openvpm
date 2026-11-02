@@ -24,6 +24,7 @@ import {
   Plus,
   Receipt,
   Stethoscope,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -40,6 +41,7 @@ import { PatientHistorySearch } from "@/components/patients/patient-history-sear
 import { PatientDocumentUpload } from "@/components/records/patient-document-upload";
 import { CapturePhotos } from "@/components/records/capture-photos";
 import { ConsentSign } from "@/components/records/consent-sign";
+import { OwnerCheckInCard } from "@/components/check-in/owner-check-in";
 import { RecentClinicalItems } from "@/components/records/recent-clinical-items";
 import { ClinicalCorrectionControl } from "@/components/records/clinical-correction-control";
 import { cn } from "@/lib/utils";
@@ -1096,6 +1098,17 @@ export default function PatientDetailPage() {
                 <ConsentSign patientId={patient.id} />
               </>
             )}
+            {(session?.user?.role === "admin" ||
+              session?.user?.role === "veterinarian") && (
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  href={`/patients/${encodeURIComponent(patient.id)}/holistic`}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Holistic workup
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handleDownloadSummary}>
               <FileDown className="mr-2 h-4 w-4" />
               Download Summary
@@ -1430,77 +1443,82 @@ export default function PatientDetailPage() {
         className="mt-6"
       >
         {activeTab === "overview" && (
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="font-heading text-base font-semibold mb-4">
-              Basic Information
-            </h3>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-sm text-muted-foreground">Name</dt>
-                <dd className="mt-0.5 text-sm font-medium">{patient.name}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Species</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {patient.species
-                    ? patient.species.charAt(0).toUpperCase() +
-                      patient.species.slice(1)
-                    : "\u2014"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Breed</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {patient.breed || "\u2014"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Sex</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {formatSex(patient.sex)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Date of Birth</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {formatClinicalDate(patient.dob, recordsTimeZone, "\u2014")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Age</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {calculateAge(patient.dob)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Color</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {patient.color || "\u2014"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">
-                  Microchip Number
-                </dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {patient.microchipNumber || "\u2014"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Status</dt>
-                <dd className="mt-0.5 text-sm font-medium capitalize">
-                  {patient.status ?? "active"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Owner</dt>
-                <dd className="mt-0.5 text-sm font-medium">
-                  {patient.clientFirstName
-                    ? `${patient.clientFirstName} ${patient.clientLastName}`
-                    : "\u2014"}
-                </dd>
-              </div>
-            </dl>
+          <div className="space-y-6">
+            <OwnerCheckInCard patientId={patient.id} />
+            <div className="rounded-lg border border-border bg-card p-6">
+              <h3 className="font-heading text-base font-semibold mb-4">
+                Basic Information
+              </h3>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-sm text-muted-foreground">Name</dt>
+                  <dd className="mt-0.5 text-sm font-medium">{patient.name}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Species</dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {patient.species
+                      ? patient.species.charAt(0).toUpperCase() +
+                        patient.species.slice(1)
+                      : "\u2014"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Breed</dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {patient.breed || "\u2014"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Sex</dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {formatSex(patient.sex)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">
+                    Date of Birth
+                  </dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {formatClinicalDate(patient.dob, recordsTimeZone, "\u2014")}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Age</dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {calculateAge(patient.dob)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Color</dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {patient.color || "\u2014"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">
+                    Microchip Number
+                  </dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {patient.microchipNumber || "\u2014"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Status</dt>
+                  <dd className="mt-0.5 text-sm font-medium capitalize">
+                    {patient.status ?? "active"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-muted-foreground">Owner</dt>
+                  <dd className="mt-0.5 text-sm font-medium">
+                    {patient.clientFirstName
+                      ? `${patient.clientFirstName} ${patient.clientLastName}`
+                      : "\u2014"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
           </div>
         )}
 

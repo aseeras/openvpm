@@ -15,6 +15,7 @@ import { communicationsRouter } from "./communications";
 import { inventoryRouter } from "./inventory";
 import { dataRouter } from "./data";
 import { aiRouter } from "./ai";
+import { holisticRouter } from "./holistic";
 import { visitRecordingsRouter } from "./visit-recordings";
 import { telehealthRouter } from "./telehealth";
 import { portalTelehealthRouter } from "./portal-telehealth";
@@ -40,12 +41,14 @@ import { bookingRouter } from "./booking";
 import { careRemindersRouter } from "./care-reminders";
 import { migrationArchiveRouter } from "./migration-archive";
 import { visitTreatmentPlansRouter } from "./visit-treatment-plans";
+import { checkInsRouter } from "./check-ins";
 
 export const appRouter = createRouter({
   auth: authRouter,
   clients: clientsRouter,
   patients: patientsRouter,
   appointments: appointmentsRouter,
+  checkIns: checkInsRouter,
   recentClinicalItems: recentClinicalItemsRouter,
   records: recordsRouter,
   billing: billingRouter,
@@ -58,6 +61,7 @@ export const appRouter = createRouter({
   inventory: inventoryRouter,
   data: dataRouter,
   ai: aiRouter,
+  holistic: holisticRouter,
   visitRecordings: visitRecordingsRouter,
   telehealth: telehealthRouter,
   portalTelehealth: portalTelehealthRouter,

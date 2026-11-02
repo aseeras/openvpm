@@ -207,6 +207,9 @@ export async function POST(req: NextRequest) {
       const file = formData.get("file");
       const category = formData.get("category");
       const patientIdValue = formData.get("patientId");
+      // A clinical photo (for example a tongue photo for a holistic workup)
+      // joins the patient's photos without replacing the profile picture.
+      const clinicalPhoto = formData.get("purpose") === "clinical";
       const idempotencyKey = req.headers.get("idempotency-key")?.trim() ?? "";
 
       if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
@@ -330,7 +333,9 @@ export async function POST(req: NextRequest) {
             dashboardCategory === "branding"
               ? "practice_logo"
               : dashboardCategory === "patient-photos"
-                ? "profile_photo"
+                ? clinicalPhoto
+                  ? "clinical_photo"
+                  : "profile_photo"
                 : dashboardCategory === "lab-results"
                   ? "lab_report"
                   : "external_record",
@@ -397,7 +402,7 @@ export async function POST(req: NextRequest) {
         const [linked] = await leaseTx
           .update(patients)
           .set({
-            ...(dashboardCategory === "patient-photos"
+            ...(dashboardCategory === "patient-photos" && !clinicalPhoto
               ? { photoUrl: reservation.fileUrl }
               : {}),
             updatedAt: new Date(),

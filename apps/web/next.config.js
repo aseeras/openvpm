@@ -20,6 +20,8 @@ const nextConfig = {
         headers: securityHeaders,
       },
       { source: "/capture/:path*", headers: capabilityHeaders },
+      { source: "/check-in/:path*", headers: capabilityHeaders },
+      { source: "/api/check-in/:path*", headers: capabilityHeaders },
       { source: "/sign/:path*", headers: capabilityHeaders },
       { source: "/treatment-plan/:path*", headers: capabilityHeaders },
       { source: "/api/capture/:path*", headers: capabilityHeaders },
