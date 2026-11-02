@@ -118,7 +118,7 @@ export async function captureGlassesPhoto(): Promise<GlassesPhotoResult> {
     const message = error instanceof Error ? error.message : String(error);
     if (/cancel/i.test(message)) return { status: "cancelled" };
     // The plugin's messages are written for staff; anything else is not.
-    const friendly = (error as { code?: unknown })?.code === "GLASSES" && message.length < 200;
+    const friendly = (error as { code?: unknown })?.code === "GLASSES" && message.length < 400;
     return { status: "error", message: friendly ? message : GENERIC_FAILURE };
   }
   const file = glassesPhotoToFile(value);
@@ -158,6 +158,6 @@ export function glassesModeStatus(): Promise<GlassesModeState> {
 /** A staff-readable message from a failed mode call. */
 export function glassesErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  const friendly = (error as { code?: unknown })?.code === "GLASSES" && message.length < 200;
+  const friendly = (error as { code?: unknown })?.code === "GLASSES" && message.length < 400;
   return friendly ? message : GENERIC_FAILURE;
 }

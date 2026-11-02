@@ -28,12 +28,25 @@ describe("voice runs", () => {
     expect(prompt).toContain("Nothing can be changed from voice");
   });
 
-  it("the Siri endpoint requires the native header, same origin and never allows writes", () => {
+  it("tell glasses mode to ask for a spoken yes before a change", () => {
+    const prompt = buildRunContextPrompt({
+      now: new Date("2026-11-02T12:00:00Z"),
+      timeZone: "America/New_York",
+      hints: { voice: true, voiceApproval: true },
+    });
+    expect(prompt).toContain("read aloud");
+    expect(prompt).toContain("say yes to save it");
+    expect(prompt).not.toContain("Nothing can be changed from voice");
+  });
+
+  it("the voice endpoint requires the native header and same origin, and only writes after a spoken yes", () => {
     const route = readFileSync("app/api/assistant/ask/route.ts", "utf8");
     expect(route).toContain('"x-openvpm-client"');
     expect(route).toContain("isSameOriginRequest(req)");
-    expect(route).toContain("allowWrites: false");
+    expect(route).toContain("const approved = confirm && input.data.approved === true;");
+    expect(route).toContain("allowWrites: approved");
     expect(route).toContain("voice: true");
+    expect(route).toContain("call.error === WRITES_DISABLED_ERROR");
   });
 
   it("passes the on-screen patient or visit through to the agent", () => {

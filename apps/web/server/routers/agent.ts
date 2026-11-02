@@ -207,6 +207,8 @@ export const agentRouter = createRouter({
           .optional(),
         // Answer for speech (Siri): short, no links or Markdown.
         voice: z.boolean().optional(),
+        // Voice client that asks aloud before a change (smart glasses).
+        voiceApproval: z.boolean().optional(),
         // What the clinician is looking at, so "this patient" resolves.
         context: z
           .object({
@@ -223,7 +225,13 @@ export const agentRouter = createRouter({
           instruction: input.instruction,
           allowWrites: input.allowWrites,
           history: input.history,
-          hints: input.voice ? { ...input.context, voice: true } : input.context,
+          hints: input.voice
+            ? {
+                ...input.context,
+                voice: true,
+                voiceApproval: input.voiceApproval === true,
+              }
+            : input.context,
           context: {
             db: ctx.db,
             practiceId: ctx.practiceId,

@@ -37,6 +37,9 @@ const DEFAULT_MODEL = "gemini-3.5-flash";
  * key is present, so a self-hosted clinic that only adds ANTHROPIC_API_KEY
  * gets a working agent instead of a "configure Vertex" banner.
  */
+/** Error a write tool returns when the run did not allow writes. */
+export const WRITES_DISABLED_ERROR = "Write tools are disabled for this run.";
+
 export const DEFAULT_CLAUDE_MODEL = "claude-sonnet-5-5";
 const MAX_ITERATIONS = 10;
 // Room for a full SOAP draft passed as tool input plus the reply.
@@ -65,6 +68,11 @@ export interface AgentRunContextHints {
   appointmentId?: string;
   /** The answer will be read aloud (e.g. by Siri). */
   voice?: boolean;
+  /**
+   * Voice client that can ask the clinician aloud to approve a change and
+   * run again with writes allowed (smart-glasses mode). Siri stays read-only.
+   */
+  voiceApproval?: boolean;
 }
 
 /** Per-run context appended to the system prompt: who, when, and where. */
@@ -106,8 +114,12 @@ export function buildRunContextPrompt(input: {
     );
   }
   if (input.hints?.voice) {
+    const spoken =
+      "This answer will be read aloud by a voice assistant. Use plain spoken sentences: no links, Markdown, tables or ids. Keep it brief (for a day's schedule, one short sentence per visit).";
     lines.push(
-      "This answer will be read aloud by a voice assistant. Use plain spoken sentences: no links, Markdown, tables or ids. Keep it brief (for a day's schedule, one short sentence per visit). Nothing can be changed from voice; if asked to change something, say to open the app.",
+      input.hints.voiceApproval
+        ? `${spoken} Changes need the clinician's spoken yes: if a change is needed, use the tool as usual; if write tools are disabled, say in one or two sentences exactly what you would save, then ask them to say yes to save it.`
+        : `${spoken} Nothing can be changed from voice; if asked to change something, say to open the app.`,
     );
   }
   return lines.join("\n");
