@@ -24,6 +24,7 @@ import {
   Plus,
   Receipt,
   Stethoscope,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -1096,6 +1097,17 @@ export default function PatientDetailPage() {
                 <CapturePhotos patientId={patient.id} />
                 <ConsentSign patientId={patient.id} />
               </>
+            )}
+            {(session?.user?.role === "admin" ||
+              session?.user?.role === "veterinarian") && (
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  href={`/patients/${encodeURIComponent(patient.id)}/holistic`}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Holistic workup
+                </Link>
+              </Button>
             )}
             <Button variant="outline" size="sm" onClick={handleDownloadSummary}>
               <FileDown className="mr-2 h-4 w-4" />

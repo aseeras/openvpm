@@ -378,8 +378,11 @@ describe("client and patient form UI states", () => {
     expect(updateInputSource).toContain(".strict()");
     expect(uploadRouteSource).toContain("finalizeManagedUploadManifest(");
     expect(uploadRouteSource).toContain(
-      'dashboardCategory === "patient-photos"\n              ? { photoUrl: reservation.fileUrl }'
+      'dashboardCategory === "patient-photos" && !clinicalPhoto\n              ? { photoUrl: reservation.fileUrl }'
     );
+    // Clinical photos (holistic workup) join the record without replacing
+    // the profile picture.
+    expect(uploadRouteSource).toContain('formData.get("purpose") === "clinical"');
   });
 
   it("matches patient create/edit form controls to server input limits", () => {
