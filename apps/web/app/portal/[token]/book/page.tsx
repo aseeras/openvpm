@@ -202,6 +202,24 @@ export default function BookAppointmentPage() {
             </div>
           </dl>
         </div>
+        {request.data.checkInPath && (
+          <div className="mx-auto mb-6 max-w-sm rounded-xl border border-primary/20 bg-primary/5 p-4 text-left text-sm">
+            <p className="font-semibold text-gray-900">
+              One more step: check-in form
+            </p>
+            <p className="mt-1 text-gray-600">
+              Tell us about {selectedPet?.name ?? "your pet"}&apos;s problems,
+              habits, food, medications, and your goals so we can prepare.
+              You can also do this later from your appointments.
+            </p>
+            <a
+              href={request.data.checkInPath}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              Fill out check-in form
+            </a>
+          </div>
+        )}
         <Link
           href="/portal/appointments"
           className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80"

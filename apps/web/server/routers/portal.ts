@@ -17,6 +17,7 @@ import {
   practices,
   locations,
   clinicalRecordCorrections,
+  appointmentCheckIns,
 } from "@openpims/db";
 import { users } from "@openpims/db";
 import { rateLimit } from "@/lib/rate-limit";
@@ -57,6 +58,7 @@ import {
   verifyInvoicePaymentToken,
 } from "@/lib/billing/invoice-payment-tokens";
 import { COMMUNICATION_CONTENT_MAX_LENGTH } from "@/lib/communications/policy";
+import { checkInIsOpen, checkInPath } from "@/lib/check-in/link";
 import { latestAssignedToForClient } from "@/lib/communications/assignment";
 import { queueInboxAlert } from "@/lib/communications/inbox-alert";
 import { stripeConfigured } from "@/lib/stripe-config";
@@ -735,9 +737,24 @@ export const portalRouter = createRouter({
         )
         .orderBy(desc(appointments.startTime));
 
+      const checkIns = await ctx.db
+        .select({ appointmentId: appointmentCheckIns.appointmentId })
+        .from(appointmentCheckIns)
+        .where(
+          and(
+            eq(appointmentCheckIns.practiceId, client.practiceId),
+            eq(appointmentCheckIns.clientId, client.id),
+            isNull(appointmentCheckIns.deletedAt),
+          ),
+        );
+      const checkedIn = new Set(checkIns.map((row) => row.appointmentId));
+
       return rows.map((row) => ({
         ...row,
         timezone,
+        checkInPath:
+          row.patientName && checkInIsOpen(row) ? checkInPath(row.id) : null,
+        checkInSubmitted: checkedIn.has(row.id),
       }));
     }),
 
@@ -1448,6 +1465,7 @@ export const portalRouter = createRouter({
       return {
         success: true,
         appointmentId: appt!.id,
+        checkInPath: checkInPath(appt!.id),
         message:
           "Your appointment request has been sent! The clinic will confirm your appointment.",
       };

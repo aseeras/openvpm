@@ -72,6 +72,7 @@ import { AmbulatorySoapCard } from "@/components/records/ambulatory-soap-card";
 import { AmbulatoryVisitRecordsCard } from "@/components/records/ambulatory-visit-records-card";
 import { RecentClinicalItems } from "@/components/records/recent-clinical-items";
 import { Badge } from "@/components/ui/badge";
+import { VisitCheckInPanel } from "@/components/check-in/owner-check-in";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -677,6 +678,11 @@ export default function EncounterWorkspacePage() {
           <span className="font-medium">Visit note:</span> {appointment.notes}
         </div>
       ) : null}
+
+      <VisitCheckInPanel
+        appointmentId={appointmentId}
+        patientId={appointment.patientId}
+      />
 
       {appointment.origin === "field" &&
       (recordsSettingsQuery.error || !ambulatoryProfile) ? (

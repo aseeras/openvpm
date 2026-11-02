@@ -6,6 +6,7 @@ import {
   AlertCircle,
   CalendarClock,
   CalendarPlus,
+  ClipboardList,
   History,
   MapPin,
 } from "lucide-react";
@@ -179,6 +180,28 @@ export default function AppointmentsPage() {
                     {formatStatusLabel(appt.status, appt.isClientRequest)}
                   </span>
                 </div>
+                {appt.checkInPath && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                    <a
+                      href={appt.checkInPath}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/5"
+                    >
+                      <ClipboardList className="h-4 w-4" />
+                      {appt.checkInSubmitted
+                        ? "Edit check-in form"
+                        : "Fill out check-in form"}
+                    </a>
+                    {appt.checkInSubmitted ? (
+                      <span className="text-xs text-gray-500">
+                        Thanks, we have your answers.
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-500">
+                        Tell us about {appt.patientName} before the visit.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
