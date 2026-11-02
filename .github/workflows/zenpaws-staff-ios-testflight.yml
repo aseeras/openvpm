@@ -4,9 +4,9 @@
 # contents) and APPLE_TEAM_ID. Signing is automatic: Xcode creates the
 # certificate and provisioning profile through the App Store Connect API key.
 #
-# Optional: META_WEARABLES_APP_ID and META_WEARABLES_CLIENT_TOKEN, from the
-# app's page in Meta's Wearables Developer Center. Without them the app talks
-# to Meta glasses only when Developer Mode is on in the Meta AI app.
+# Meta glasses: the app runs in Meta's Developer Mode (each phone turns it on
+# in the Meta AI app). Production mode needs the app's Meta App ID and client
+# token plus a working https universal link, so they are not passed yet.
 name: ZenPaws staff iOS TestFlight
 
 on:
@@ -36,8 +36,6 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      META_APP_ID: ${{ secrets.META_WEARABLES_APP_ID }}
-      META_CLIENT_TOKEN: ${{ secrets.META_WEARABLES_CLIENT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -101,9 +99,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_STYLE=Automatic \
-            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            META_APP_ID="$META_APP_ID" \
-            META_CLIENT_TOKEN="$META_CLIENT_TOKEN"
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
       - name: Upload to TestFlight
         run: |

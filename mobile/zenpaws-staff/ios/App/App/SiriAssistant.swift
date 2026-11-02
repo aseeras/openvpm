@@ -15,9 +15,28 @@ enum ClinicAssistant {
     /// `context` names what is open in the app (`patientId`,
     /// `appointmentId`) so "this patient" works from the glasses.
     static func ask(_ question: String, context: [String: String] = [:]) async -> String {
+        await reply(to: question, context: context).answer
+    }
+
+    /// The assistant's answer, and whether it wants to make a change that
+    /// needs the staff member's yes. `confirm` lets it propose changes
+    /// (glasses mode asks aloud); `approved` runs the proposed change in
+    /// `history` after a yes. Siri sends neither, so it stays read-only.
+    struct Reply {
+        let answer: String
+        let needsApproval: Bool
+    }
+
+    static func reply(
+        to question: String,
+        context: [String: String] = [:],
+        confirm: Bool = false,
+        approved: Bool = false,
+        history: [(role: String, content: String)] = []
+    ) async -> Reply {
         let cookies = await signInCookies()
         guard !cookies.isEmpty else {
-            return "Open ZenPaws VPM and sign in first, then ask again."
+            return Reply(answer: "Open ZenPaws VPM and sign in first, then ask again.", needsApproval: false)
         }
 
         var request = URLRequest(url: baseURL.appendingPathComponent("api/assistant/ask"))
@@ -26,12 +45,17 @@ enum ClinicAssistant {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
                          forHTTPHeaderField: "Origin")
-        request.setValue("staff-ios-siri", forHTTPHeaderField: "X-OpenVPM-Client")
+        request.setValue(confirm ? "staff-ios-glasses" : "staff-ios-siri", forHTTPHeaderField: "X-OpenVPM-Client")
         for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
             request.setValue(value, forHTTPHeaderField: name)
         }
         var body: [String: Any] = ["question": question]
         if !context.isEmpty { body["context"] = context }
+        if confirm { body["confirm"] = true }
+        if approved {
+            body["approved"] = true
+            body["history"] = history.map { ["role": $0.role, "content": $0.content] }
+        }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
@@ -39,11 +63,11 @@ enum ClinicAssistant {
             if let body = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                let answer = body["answer"] as? String,
                !answer.isEmpty {
-                return answer
+                return Reply(answer: answer, needsApproval: body["needsApproval"] as? Bool == true)
             }
-            return "I couldn't get an answer. Try again in the app."
+            return Reply(answer: "I couldn't get an answer. Try again in the app.", needsApproval: false)
         } catch {
-            return "I couldn't reach the clinic system. Check your connection and try again."
+            return Reply(answer: "I couldn't reach the clinic system. Check your connection and try again.", needsApproval: false)
         }
     }
 

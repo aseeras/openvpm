@@ -38,8 +38,9 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
   listens for a request, and a double press stops a visit recording. Spoken
   requests are recognized on the phone from the glasses' microphone: "record
   visit", "stop recording", "take a photo", "turn off glasses", or any
-  question for the read-only clinic assistant, which knows the patient or
-  visit on screen. Replies play in the glasses and, on Meta Ray-Ban Display,
+  question for the clinic assistant, which knows the patient or visit on
+  screen. When the assistant wants to change something (a SOAP draft,
+  vitals), it reads the change out and saves it only after the vet says yes. Replies play in the glasses and, on Meta Ray-Ban Display,
   show on the lens. Photos and recordings go through the open page
   (`apps/web/lib/glasses/page-actions.ts`), so the usual consent and patient
   rules apply. The capture button needs Inputs enabled for the app in the
@@ -47,10 +48,11 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
   Meta". The first photo opens the Meta AI app twice:
   once to allow the app, once to allow the camera. Until the app has a Meta
   Wearables Developer Center ID, each phone needs Meta AI's Developer Mode
-  (Settings > App Info, tap the version 5 times). With an ID, add the
-  `META_WEARABLES_APP_ID` and `META_WEARABLES_CLIENT_TOKEN` repository secrets
-  (the build passes them as `META_APP_ID` and `META_CLIENT_TOKEN`) and invite
-  staff to the integration's release channel. The toolkit needs iOS 17.2, so the app does
+  (Settings > App Info, tap the version 5 times). Leaving Developer Mode
+  needs the Developer Center app ID and client token as the `META_APP_ID` and
+  `META_CLIENT_TOKEN` build settings, an https universal link that opens the
+  app, and staff invited to the integration's release channel; the build does
+  not set them yet. The toolkit needs iOS 17.2, so the app does
   too. Meta does not yet allow toolkit apps in the App Store, so the
   app stays on TestFlight internal testing, which has no App Review.
 - **Offline:** `www/offline.html` is shown when the system cannot be reached.
