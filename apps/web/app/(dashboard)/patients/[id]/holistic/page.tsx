@@ -37,8 +37,8 @@ import {
 import {
   captureGlassesPhoto,
   glassesAvailable,
-  GLASSES_CAPTURE_EVENT,
 } from "@/lib/glasses/native-glasses";
+import { useGlassesAction } from "@/lib/glasses/page-actions";
 
 const MODALITY_STORAGE_KEY = "openvpm.holistic.modalities";
 const PHOTO_MAX_EDGE_PX = 1600;
@@ -117,20 +117,14 @@ export default function HolisticWorkupPage() {
   const [hasGlasses, setHasGlasses] = useState(false);
   const [glassesBusy, setGlassesBusy] = useState(false);
   const glassesBusyRef = useRef(false);
-  const takeGlassesPhotoRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     setModalities(readSavedModalities());
     setHasGlasses(glassesAvailable());
   }, []);
 
-  // "Hey Meta, start ZenPaws" on the glasses takes a photo for this patient.
-  useEffect(() => {
-    if (!allowed) return;
-    const onCapture = () => void takeGlassesPhotoRef.current?.();
-    window.addEventListener(GLASSES_CAPTURE_EVENT, onCapture);
-    return () => window.removeEventListener(GLASSES_CAPTURE_EVENT, onCapture);
-  }, [allowed]);
+  // In glasses mode, the capture button adds the photo to this workup.
+  useGlassesAction("photo", () => takeGlassesPhoto(), allowed);
 
   const draft = trpc.holistic.draftWorkup.useMutation({
     onError: (err) => toast.error(err.message),
@@ -167,8 +161,9 @@ export default function HolisticWorkupPage() {
     await uploadPhotos(chosen);
   }
 
-  async function uploadPhotos(chosen: File[]) {
-    if (chosen.length === 0) return;
+  /** Returns whether every photo was saved. */
+  async function uploadPhotos(chosen: File[]): Promise<boolean> {
+    if (chosen.length === 0) return false;
     setUploading(true);
     try {
       for (const original of chosen) {
@@ -199,27 +194,35 @@ export default function HolisticWorkupPage() {
         [...current, ...added].slice(0, TCM_WORKUP_MAX_PHOTOS),
       );
       toast.success(chosen.length === 1 ? "Photo added" : "Photos added");
+      return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
+      return false;
     } finally {
       setUploading(false);
     }
   }
 
-  async function takeGlassesPhoto() {
-    if (glassesBusyRef.current) return;
+  /** Returns what the glasses say back. */
+  async function takeGlassesPhoto(): Promise<string> {
+    if (glassesBusyRef.current) return "Still saving the last photo.";
     glassesBusyRef.current = true;
     setGlassesBusy(true);
     try {
       const result = await captureGlassesPhoto();
-      if (result.status === "error") toast.error(result.message);
-      if (result.status === "ok") await uploadPhotos([result.file]);
+      if (result.status === "cancelled") return "Photo cancelled.";
+      if (result.status === "error") {
+        toast.error(result.message);
+        return result.message;
+      }
+      return (await uploadPhotos([result.file]))
+        ? "Photo added to the workup."
+        : "The photo didn't save. Check the phone.";
     } finally {
       glassesBusyRef.current = false;
       setGlassesBusy(false);
     }
   }
-  takeGlassesPhotoRef.current = takeGlassesPhoto;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

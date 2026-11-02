@@ -31,13 +31,26 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
   Oakley Meta, Meta Ray-Ban Display) through Meta's Wearables Device Access
   Toolkit 1.0.1 (Swift package `facebook/meta-wearables-dat-ios`). "Take with
   glasses" on a patient's holistic workup takes a photo with the glasses and
-  adds it to that patient's clinical photos; "Hey Meta, start ZenPaws" asks the
-  open page for the same photo. The first photo opens the Meta AI app twice:
+  adds it to that patient's clinical photos. **Glasses mode**
+  (`ios/App/App/GlassesMode.swift`, the "Glasses" button in the app) keeps the
+  glasses connected: a short press of the capture button saves a photo to the
+  patient or visit on screen, press and hold (or "Hey Meta, start ZenPaws")
+  listens for a request, and a double press stops a visit recording. Spoken
+  requests are recognized on the phone from the glasses' microphone: "record
+  visit", "stop recording", "take a photo", "turn off glasses", or any
+  question for the read-only clinic assistant, which knows the patient or
+  visit on screen. Replies play in the glasses and, on Meta Ray-Ban Display,
+  show on the lens. Photos and recordings go through the open page
+  (`apps/web/lib/glasses/page-actions.ts`), so the usual consent and patient
+  rules apply. The capture button needs Inputs enabled for the app in the
+  Developer Center; without it, use the phone's microphone button or "Hey
+  Meta". The first photo opens the Meta AI app twice:
   once to allow the app, once to allow the camera. Until the app has a Meta
   Wearables Developer Center ID, each phone needs Meta AI's Developer Mode
-  (Settings > App Info, tap the version 5 times). With an ID, set the
-  `META_APP_ID` and `META_CLIENT_TOKEN` build settings and invite staff to the
-  integration's release channel. The toolkit needs iOS 17.2, so the app does
+  (Settings > App Info, tap the version 5 times). With an ID, add the
+  `META_WEARABLES_APP_ID` and `META_WEARABLES_CLIENT_TOKEN` repository secrets
+  (the build passes them as `META_APP_ID` and `META_CLIENT_TOKEN`) and invite
+  staff to the integration's release channel. The toolkit needs iOS 17.2, so the app does
   too. Meta does not yet allow toolkit apps in the App Store, so the
   app stays on TestFlight internal testing, which has no App Review.
 - **Offline:** `www/offline.html` is shown when the system cannot be reached.
