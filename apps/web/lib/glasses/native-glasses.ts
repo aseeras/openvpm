@@ -9,11 +9,50 @@
 export const GLASSES_PLUGIN = "ZenPawsGlasses";
 
 /**
- * Sent by the staff app when the vet says "Hey Meta, start ZenPaws" (or
- * presses the glasses capture shortcut): a page that can take a glasses
- * photo for the open patient does so.
+ * Sent by the staff app whenever glasses mode changes: turned on or off,
+ * listening, thinking, or a new spoken reply.
  */
-export const GLASSES_CAPTURE_EVENT = "zenpaws:glasses-capture";
+export const GLASSES_MODE_EVENT = "zenpaws:glasses-mode";
+
+export type GlassesModeState = {
+  /** Glasses mode is on: the capture button and voice reach ZenPaws. */
+  active: boolean;
+  /** The glasses microphone is listening for a request. */
+  listening: boolean;
+  /** Working on a request (asking the assistant, taking a photo). */
+  busy: boolean;
+  /** The connected glasses have a display (Meta Ray-Ban Display). */
+  display: boolean;
+  /** The glasses' capture button reaches ZenPaws (needs Meta's approval). */
+  buttons: boolean;
+  /** The last thing said to or by the glasses, for the phone screen. */
+  heard?: string;
+  reply?: string;
+};
+
+export const GLASSES_MODE_OFF: GlassesModeState = {
+  active: false,
+  listening: false,
+  busy: false,
+  display: false,
+  buttons: false,
+};
+
+/** Reads a mode event's detail, ignoring anything malformed. */
+export function readGlassesModeState(detail: unknown): GlassesModeState {
+  const value = (detail ?? {}) as Record<string, unknown>;
+  const text = (key: string) =>
+    typeof value[key] === "string" && value[key] ? (value[key] as string) : undefined;
+  return {
+    active: value.active === true,
+    listening: value.listening === true,
+    busy: value.busy === true,
+    display: value.display === true,
+    buttons: value.buttons === true,
+    heard: text("heard"),
+    reply: text("reply"),
+  };
+}
 
 type CapacitorBridge = {
   isNativePlatform?: () => boolean;
@@ -85,4 +124,40 @@ export async function captureGlassesPhoto(): Promise<GlassesPhotoResult> {
   const file = glassesPhotoToFile(value);
   if (!file) return { status: "error", message: GENERIC_FAILURE };
   return { status: "ok", file };
+}
+
+async function callMode(method: "startMode" | "stopMode" | "listen" | "modeStatus"): Promise<GlassesModeState> {
+  const cap = capacitor();
+  if (!cap?.nativePromise || !glassesAvailable()) return GLASSES_MODE_OFF;
+  return readGlassesModeState(await cap.nativePromise(GLASSES_PLUGIN, method, {}));
+}
+
+/**
+ * Turns on glasses mode: the glasses' capture button takes photos for the
+ * open patient, a long press (or "Hey Meta, start ZenPaws") listens for a
+ * request, and replies play in the glasses. Throws with a staff-readable
+ * message when the glasses can't be reached.
+ */
+export function startGlassesMode(): Promise<GlassesModeState> {
+  return callMode("startMode");
+}
+
+export function stopGlassesMode(): Promise<GlassesModeState> {
+  return callMode("stopMode");
+}
+
+/** Listens through the glasses microphone for one request. */
+export function glassesListen(): Promise<GlassesModeState> {
+  return callMode("listen");
+}
+
+export function glassesModeStatus(): Promise<GlassesModeState> {
+  return callMode("modeStatus").catch(() => GLASSES_MODE_OFF);
+}
+
+/** A staff-readable message from a failed mode call. */
+export function glassesErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const friendly = (error as { code?: unknown })?.code === "GLASSES" && message.length < 200;
+  return friendly ? message : GENERIC_FAILURE;
 }

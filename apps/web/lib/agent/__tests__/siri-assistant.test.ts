@@ -35,4 +35,10 @@ describe("voice runs", () => {
     expect(route).toContain("allowWrites: false");
     expect(route).toContain("voice: true");
   });
+
+  it("passes the on-screen patient or visit through to the agent", () => {
+    const route = readFileSync("app/api/assistant/ask/route.ts", "utf8");
+    expect(route).toContain("patientId: z.string().guid().optional()");
+    expect(route).toContain("context: input.data.context");
+  });
 });

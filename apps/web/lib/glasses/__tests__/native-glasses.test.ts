@@ -4,6 +4,7 @@ import {
   glassesAvailable,
   glassesPhotoToFile,
   GLASSES_PLUGIN,
+  readGlassesModeState,
 } from "../native-glasses";
 
 const JPEG_BYTES = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);
@@ -108,5 +109,18 @@ describe("captureGlassesPhoto", () => {
   it("reports an empty answer as a failure", async () => {
     installCapacitor(async () => ({}));
     expect((await captureGlassesPhoto()).status).toBe("error");
+  });
+});
+
+describe("readGlassesModeState", () => {
+  it("reads the app's mode updates", () => {
+    expect(
+      readGlassesModeState({ active: true, listening: false, busy: true, display: true, buttons: true, heard: "record visit", reply: "" }),
+    ).toEqual({ active: true, listening: false, busy: true, display: true, buttons: true, heard: "record visit", reply: undefined });
+  });
+
+  it("treats anything malformed as off", () => {
+    expect(readGlassesModeState(null)).toEqual({ active: false, listening: false, busy: false, display: false, buttons: false, heard: undefined, reply: undefined });
+    expect(readGlassesModeState({ active: "yes" }).active).toBe(false);
   });
 });
