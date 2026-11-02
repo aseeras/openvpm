@@ -421,7 +421,7 @@ function buildToolSet(
             const call: AgentToolCall = { name: t.name, input: args };
             try {
               if (!t.readOnly && !allowWrites) {
-                call.error = WRITES_DISABLED_ERROR;
+                call.error = "Write tools are disabled for this run.";
               } else {
                 const missingScopes = missingToolApiScopes(t, apiKeyScopes);
                 if (missingScopes.length > 0) {
