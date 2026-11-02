@@ -623,7 +623,8 @@ set job-specific URLs (`CRON_HEARTBEAT_REMINDERS_URL`,
 `CRON_HEARTBEAT_SMS_OPERATIONS_URL`,
 `CRON_HEARTBEAT_SMS_PROVIDER_EVENTS_URL`,
 `CRON_HEARTBEAT_CONVERSION_RECONCILE_URL`,
-`CRON_HEARTBEAT_PRESCRIPTION_EXPIRY_URL`) when your external monitor expects one URL
+`CRON_HEARTBEAT_PRESCRIPTION_EXPIRY_URL`,
+`CRON_HEARTBEAT_MORNING_BRIEFING_URL`) when your external monitor expects one URL
 per scheduled job. URL templates may include `{job}` and `{status}` tokens.
 
 ## Demo Mode

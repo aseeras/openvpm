@@ -63,6 +63,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/morning-briefing",
+      "schedule": "5 * * * *"
+    },
+    {
       "path": "/api/cron/conversion-reconcile",
       "schedule": "35 * * * *"
     }
