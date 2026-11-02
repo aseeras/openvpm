@@ -24,8 +24,8 @@ const ALL_GUIDES: GuideId[] = [
  * guide to a centered card.
  */
 const ANCHOR_SOURCES: Record<string, string> = {
-  "agent-input": "app/(dashboard)/agent/page.tsx",
-  "agent-reply": "app/(dashboard)/agent/page.tsx",
+  "agent-input": "components/agent/agent-chat.tsx",
+  "agent-reply": "components/agent/agent-chat.tsx",
   "invoice-detail": "app/(dashboard)/billing/page.tsx",
   "schedule-calendar": "app/(dashboard)/schedule/page.tsx",
   "whiteboard-board": "app/(dashboard)/whiteboard/page.tsx",

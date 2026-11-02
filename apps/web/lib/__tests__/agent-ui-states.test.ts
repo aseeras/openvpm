@@ -6,7 +6,13 @@ import {
 } from "../agent/policy";
 
 describe("agent UI states", () => {
-  const source = readFileSync("app/(dashboard)/agent/page.tsx", "utf8");
+  // The chat UI is shared by the Agent page and the "Ask" panel.
+  const source = readFileSync("components/agent/agent-chat.tsx", "utf8");
+  const pageSource = readFileSync("app/(dashboard)/agent/page.tsx", "utf8");
+  const launcherSource = readFileSync(
+    "components/agent/assistant-launcher.tsx",
+    "utf8",
+  );
   const routerSource = readFileSync("server/routers/agent.ts", "utf8");
   const apiRouteSource = readFileSync("app/api/v1/agent/route.ts", "utf8");
 
@@ -40,13 +46,22 @@ describe("agent UI states", () => {
     expect(source).not.toContain("status.data?.configured");
   });
 
-  it("makes clinical write mode explicit and one-run only", () => {
-    expect(source).toContain("Allow writes: appointments and patient vitals");
-    expect(source).toContain("Write mode can create appointments");
-    expect(source).toContain("record patient vitals");
-    expect(source).not.toContain("save SOAP");
-    expect(source).toContain("turns off automatically after this run");
+  it("makes clinical write mode explicit and one-message only", () => {
+    expect(source).toContain("Allow changes");
+    expect(source).toContain("booking visits, recording");
+    expect(source).toContain("saving SOAP drafts (never finalized)");
+    expect(source).toContain("It turns off\n              after that message.");
     expect(source).not.toContain("Allow writes (e.g. booking appointments)");
+  });
+
+  it("asks before retrying a blocked change, and only for the latest reply", () => {
+    expect(source).toContain(
+      'export const WRITES_DISABLED_ERROR = "Write tools are disabled for this run."',
+    );
+    expect(source).toContain("replyNeedsWriteApproval(m.toolCalls)");
+    expect(source).toContain("m.id === lastReplyId &&");
+    expect(source).toContain("send(text, true, { echo: false })");
+    expect(source).toContain("Allow this change");
   });
 
   it("surfaces agent status loading and error states", () => {
@@ -99,23 +114,26 @@ describe("agent UI states", () => {
   });
 
   it("gates direct-route access to roles that can run the agent", () => {
-    expect(source).toContain('import { useRouter } from "next/navigation"');
-    expect(source).toContain('import { useSession } from "next-auth/react"');
-    expect(source).toContain(
-      "function canRunAgentRole(role?: string | null): boolean",
+    expect(pageSource).toContain('import { useRouter } from "next/navigation"');
+    expect(pageSource).toContain('import { useSession } from "next-auth/react"');
+    expect(launcherSource).toContain(
+      "export function canRunAgentRole(role?: string | null): boolean",
     );
-    expect(source).toContain('role === "admin" || role === "veterinarian"');
-    expect(source).toContain("const { data: session, status } = useSession()");
-    expect(source).toContain('if (status === "loading")');
-    expect(source).toContain("if (!canRunAgentRole(session?.user?.role))");
-    expect(source).toContain("Agent access is restricted");
-    expect(source).toContain(
+    expect(launcherSource).toContain('role === "admin" || role === "veterinarian"');
+    expect(launcherSource).toContain(
+      "if (!canRunAgentRole(role) || onAgentPage) return null;",
+    );
+    expect(pageSource).toContain("const { data: session, status } = useSession()");
+    expect(pageSource).toContain('if (status === "loading")');
+    expect(pageSource).toContain("if (!canRunAgentRole(session?.user?.role))");
+    expect(pageSource).toContain("Agent access is restricted");
+    expect(pageSource).toContain(
       'return <AgentRunner isAdmin={session?.user?.role === "admin"} />',
     );
-    expect(source).toContain("function AgentRunner({ isAdmin }");
-    expect(source.indexOf("function AgentRunner({ isAdmin }")).toBeLessThan(
-      source.indexOf("trpc.agent.status.useQuery"),
-    );
+    expect(pageSource).toContain("function AgentRunner({ isAdmin }");
+    // Status is only queried inside the chat, after the role gate renders it.
+    expect(pageSource).not.toContain("trpc.agent.status.useQuery");
+    expect(source).toContain("trpc.agent.status.useQuery");
     expect(routerSource).toContain('requireRole("admin", "veterinarian")');
   });
 });

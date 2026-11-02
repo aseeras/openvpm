@@ -73,6 +73,11 @@ vi.mock("@/lib/billing/ai-access", () => ({
   readHostedAiAccess: mocks.readHostedAiAccess,
 }));
 
+vi.mock("../tool-kit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tool-kit")>()),
+  practiceTimeZone: vi.fn(async () => "America/New_York"),
+}));
+
 vi.mock("@/lib/recovery-hold", () => ({
   RECOVERY_HOLD_BLOCK_MESSAGE: "recovery hold",
   lockPracticeForExternalSideEffects: mocks.lockPracticeForExternalSideEffects,
@@ -274,6 +279,38 @@ describe("runAgent rate limiting", () => {
         },
       ],
     });
+  });
+
+  it("offers personal clinician tools only to signed-in staff runs", async () => {
+    const offered: string[][] = [];
+    const systems: string[] = [];
+    mocks.generateText.mockImplementation(async (opts: unknown) => {
+      const o = opts as { tools: Record<string, unknown>; system: string };
+      offered.push(Object.keys(o.tools));
+      systems.push(o.system);
+      return { text: "ok", steps: [{}], finishReason: "stop" };
+    });
+
+    await runAgent({ instruction: "What needs my attention?", context });
+    await runAgent({
+      instruction: "What needs my attention?",
+      context: {
+        ...context,
+        staffUser: { id: "user-1", name: "Dr. Example", role: "veterinarian" },
+      },
+      hints: { patientId: "00000000-0000-0000-0000-000000000003" },
+    });
+
+    expect(offered[0]).not.toContain("get_my_todo");
+    expect(offered[0]).not.toContain("save_soap_draft");
+    expect(offered[0]).toContain("get_my_day");
+    expect(offered[1]).toContain("get_my_todo");
+    expect(offered[1]).toContain("save_soap_draft");
+    expect(systems[0]).toContain("(America/New_York)");
+    expect(systems[1]).toContain("You are helping Dr. Example");
+    expect(systems[1]).toContain(
+      "viewing patient 00000000-0000-0000-0000-000000000003",
+    );
   });
 
   it("blocks actor overages before practice checks, provider calls, or billing usage", async () => {
