@@ -12,6 +12,18 @@ const mocks = vi.hoisted(() => ({
   })),
   logQuoCallActivity: vi.fn(async (_activity: unknown) => "logged"),
   openVpmSentThroughQuo: vi.fn(async (_id: string) => true),
+  replyToInboundTextLater: vi.fn(async (_input: unknown) => "drafted"),
+  after: vi.fn((task: () => unknown) => {
+    void task();
+  }),
+}));
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: mocks.after,
+}));
+vi.mock("@/lib/texting-assistant/assistant", () => ({
+  replyToInboundTextLater: mocks.replyToInboundTextLater,
 }));
 
 vi.mock("@/lib/messaging/sms-provider-events", () => ({
@@ -113,6 +125,29 @@ describe("Quo webhook", () => {
       }),
     );
     expect(mocks.projectSmsProviderEvent).toHaveBeenCalled();
+    // Opt-out keywords never reach the texting assistant.
+    expect(mocks.replyToInboundTextLater).not.toHaveBeenCalled();
+  });
+
+  it("hands ordinary client texts to the texting assistant", async () => {
+    await POST(
+      signedRequest({
+        id: "EV9",
+        type: "message.received",
+        data: {
+          resource: {
+            id: "AC-msg-9",
+            direction: "incoming",
+            text: "Can the doctor see Milo next week?",
+            createdAt: new Date().toISOString(),
+          },
+          context,
+        },
+      }),
+    );
+    expect(mocks.replyToInboundTextLater).toHaveBeenCalledWith({
+      dedupeKey: "quo:inbound:AC-msg-9",
+    });
   });
 
   it("records delivery only for texts OpenVPM sent", async () => {

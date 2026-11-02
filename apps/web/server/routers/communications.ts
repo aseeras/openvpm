@@ -145,11 +145,12 @@ type InboxConversationRow = {
   direction: "inbound" | "outbound";
   subject: string | null;
   content: string | null;
-  status: "pending" | "sent" | "delivered" | "read" | "failed";
+  status: "pending" | "sent" | "delivered" | "read" | "failed" | "draft";
   assignedTo: string | null;
   assignedToName: string | null;
   readAt: Date | string | null;
   providerMessageId: string | null;
+  dedupeKey: string | null;
   createdAt: Date | string | null;
   clientFirstName: string | null;
   clientLastName: string | null;
@@ -376,6 +377,7 @@ export const communicationsRouter = createRouter({
             coalesce(latest_assignment.assigned_to_name, u.name) as "assignedToName",
             c.read_at as "readAt",
             c.provider_message_id as "providerMessageId",
+            c.dedupe_key as "dedupeKey",
             c.created_at as "createdAt",
             cl.first_name as "clientFirstName",
             cl.last_name as "clientLastName",
@@ -443,6 +445,7 @@ export const communicationsRouter = createRouter({
           latest."assignedToName",
           latest."readAt",
           latest."providerMessageId",
+          latest."dedupeKey",
           latest."createdAt",
           latest."clientFirstName",
           latest."clientLastName",
@@ -479,6 +482,7 @@ export const communicationsRouter = createRouter({
           assignedToName: users.name,
           readAt: communications.readAt,
           providerMessageId: communications.providerMessageId,
+          dedupeKey: communications.dedupeKey,
           createdAt: communications.createdAt,
         })
         .from(communications)
@@ -767,10 +771,7 @@ export const communicationsRouter = createRouter({
 
       if (isDeliverableOutbound) {
         if (
-          !(await lockPracticeForExternalSideEffects(
-            ctx.db,
-            ctx.practiceId,
-          ))
+          !(await lockPracticeForExternalSideEffects(ctx.db, ctx.practiceId))
         ) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
@@ -959,8 +960,8 @@ export const communicationsRouter = createRouter({
       }
 
       const outboundDedupeKey = isDeliverableOutbound
-          ? `${input.channel}:inbox:${ctx.practiceId}:${input.requestId!}`
-          : undefined;
+        ? `${input.channel}:inbox:${ctx.practiceId}:${input.requestId!}`
+        : undefined;
       const insertCommunication = async (
         tx: Pick<Database, "insert" | "select">,
       ) => {

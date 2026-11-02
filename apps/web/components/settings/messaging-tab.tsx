@@ -10,6 +10,7 @@ import {
   Send,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { TextingAssistantCard } from "@/components/settings/texting-assistant-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -295,6 +296,8 @@ export function MessagingTab() {
           onChanged={() => utils.messaging.getStatus.invalidate()}
         />
       ) : null}
+
+      <TextingAssistantCard />
     </div>
   );
 }
