@@ -15,8 +15,8 @@ import {
 import { normalizeE164 } from "./phone";
 
 /**
- * Quo call activity, normalized from a signed `call.completed` or
- * `call.voicemail.completed` webhook. Calls are logged to the Communications
+ * Quo call activity, normalized from a signed `call.completed`,
+ * `call.voicemail.completed`, or `call.summary.completed` webhook. Calls are logged to the Communications
  * inbox as `phone` entries so staff see them next to texts and portal
  * messages, linked to the client when exactly one client has that number.
  */
@@ -42,6 +42,20 @@ export type QuoCallActivity =
       transcript: string | null;
       occurredAt: Date;
       quoLink: string | null;
+    }
+  | {
+      /** Quo's call summary, including what callers told Quo's AI agent. */
+      kind: "summary";
+      callId: string;
+      phoneNumberId: string;
+      externalPhone: string;
+      handledByAiAgent: boolean;
+      summary: string[];
+      nextSteps: string[];
+      /** Details the AI agent collected, e.g. caller name or pet name. */
+      details: Array<{ name: string; value: string }>;
+      occurredAt: Date;
+      quoLink: string | null;
     };
 
 const MAX_TRANSCRIPT_LENGTH = 4_000;
@@ -62,12 +76,12 @@ function formatDuration(seconds: number | null): string | null {
 }
 
 const CALL_STATUS_LABELS: Record<string, string> = {
-  answered: "Answered",
-  unanswered: "Missed",
-  abandoned: "Missed (caller hung up)",
-  forwarded: "Forwarded",
-  failed: "Failed",
-  "ai-handled": "Handled by Quo's AI agent",
+  answered: "answered",
+  unanswered: "missed",
+  abandoned: "missed (caller hung up)",
+  forwarded: "forwarded",
+  failed: "failed",
+  "ai-handled": "answered by Quo's AI agent",
 };
 
 /** Subject and body for the inbox entry. Pure, so it is easy to test. */
@@ -76,7 +90,9 @@ export function describeQuoCallActivity(activity: QuoCallActivity): {
   content: string;
 } {
   const phone = formatPhone(activity.externalPhone);
-  const duration = formatDuration(activity.durationSeconds);
+  const duration = formatDuration(
+    "durationSeconds" in activity ? activity.durationSeconds : null,
+  );
   const link = activity.quoLink ? `\n\nOpen in Quo: ${activity.quoLink}` : "";
 
   if (activity.kind === "voicemail") {
@@ -93,13 +109,29 @@ export function describeQuoCallActivity(activity: QuoCallActivity): {
     };
   }
 
+  if (activity.kind === "summary") {
+    const lines = [
+      ...activity.details.map((detail) => `${detail.name}: ${detail.value}`),
+      ...(activity.summary.length > 0
+        ? ["", "Summary:", ...activity.summary.map((line) => `- ${line}`)]
+        : []),
+      ...(activity.nextSteps.length > 0
+        ? ["", "Next steps:", ...activity.nextSteps.map((line) => `- ${line}`)]
+        : []),
+    ];
+    return {
+      subject: `${activity.handledByAiAgent ? "AI agent call notes" : "Call summary"}: ${phone}`,
+      content: lines.join("\n").trim().slice(0, MAX_TRANSCRIPT_LENGTH) + link,
+    };
+  }
+
   const status = activity.status ? CALL_STATUS_LABELS[activity.status] : null;
   if (activity.direction === "outbound") {
     return {
       subject: `Call to ${phone}`,
       content:
         [
-          `Outgoing call${status ? `: ${status.toLowerCase()}` : ""}`,
+          `Outgoing call${status ? `: ${status}` : ""}`,
           duration ? `${duration} long` : null,
         ]
           .filter(Boolean)
@@ -112,7 +144,7 @@ export function describeQuoCallActivity(activity: QuoCallActivity): {
     subject: `${missed ? "Missed call" : "Call"} from ${phone}`,
     content:
       [
-        `Incoming call${status ? `: ${status.toLowerCase()}` : ""}`,
+        `Incoming call${status ? `: ${status}` : ""}`,
         duration && !missed ? `${duration} long` : null,
         activity.hasVoicemail ? "caller left a voicemail" : null,
       ]
@@ -122,9 +154,13 @@ export function describeQuoCallActivity(activity: QuoCallActivity): {
 }
 
 export function quoCallDedupeKey(activity: QuoCallActivity): string {
-  return activity.kind === "voicemail"
-    ? `quo:voicemail:${activity.voicemailId}`.slice(0, 160)
-    : `quo:call:${activity.callId}`.slice(0, 160);
+  if (activity.kind === "voicemail") {
+    return `quo:voicemail:${activity.voicemailId}`.slice(0, 160);
+  }
+  if (activity.kind === "summary") {
+    return `quo:summary:${activity.callId}`.slice(0, 160);
+  }
+  return `quo:call:${activity.callId}`.slice(0, 160);
 }
 
 async function logQuoCallActivityInTransaction(
@@ -165,7 +201,7 @@ async function logQuoCallActivityInTransaction(
   const direction =
     activity.kind === "call" ? activity.direction : ("inbound" as const);
   const providerId =
-    activity.kind === "call" ? activity.callId : activity.voicemailId;
+    activity.kind === "voicemail" ? activity.voicemailId : activity.callId;
 
   const inserted = await tx
     .insert(communications)

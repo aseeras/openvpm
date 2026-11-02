@@ -27,6 +27,8 @@ export const dynamic = "force-dynamic";
  * - message.delivered / failed / undelivered → delivery status of texts that
  *   OpenVPM sent through Quo (texts staff send from the Quo app are ignored)
  * - call.completed / call.voicemail.completed → a phone entry in the inbox
+ * - call.summary.completed → Quo's call summary (and what callers told Quo's
+ *   AI agent) as a phone entry in the inbox
  */
 
 const DELIVERY_EVENTS = new Set([
@@ -56,6 +58,15 @@ function firstString(value: unknown): string | null {
   return Array.isArray(value) ? str(value[0]) : null;
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = str(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
 function date(value: unknown): Date {
   const raw = str(value);
   const parsed = raw ? new Date(raw) : new Date();
@@ -72,6 +83,11 @@ function token(value: unknown): string | null {
 
 function ok() {
   return NextResponse.json({ ok: true });
+}
+
+function skipped(type: string, reason: string) {
+  console.log("[quo] webhook event skipped", { type, reason });
+  return ok();
 }
 
 function badRequest(error: string) {
@@ -127,6 +143,12 @@ export async function POST(request: Request) {
   const eventId = token(payload.id) ?? token(request.headers.get("webhook-id"));
   const phoneNumberId = str(context.phoneNumberId);
   const quoLink = str(record(data?.links)?.quo);
+  // No phone numbers or message text: just enough to trace deliveries.
+  console.log("[quo] webhook event", {
+    type: eventType,
+    id: eventId,
+    phoneNumberId,
+  });
 
   if (eventType === "message.received") {
     if (str(resource.direction) && str(resource.direction) !== "incoming") {
@@ -188,8 +210,8 @@ export async function POST(request: Request) {
     const participants = record(context.participants);
     const externalPhone = firstString(participants?.external);
     if (!callId || !phoneNumberId) return badRequest("missing call identity");
-    if (!externalPhone) return ok();
-    await logQuoCallActivity({
+    if (!externalPhone) return skipped(eventType, "no_caller_number");
+    const logged = await logQuoCallActivity({
       kind: "call",
       callId,
       phoneNumberId,
@@ -202,6 +224,7 @@ export async function POST(request: Request) {
       occurredAt: date(resource.createdAt),
       quoLink,
     });
+    console.log("[quo] call activity", { type: eventType, result: logged });
     return ok();
   }
 
@@ -212,8 +235,8 @@ export async function POST(request: Request) {
     if (!voicemailId || !phoneNumberId) {
       return badRequest("missing voicemail identity");
     }
-    if (!externalPhone) return ok();
-    await logQuoCallActivity({
+    if (!externalPhone) return skipped(eventType, "no_caller_number");
+    const logged = await logQuoCallActivity({
       kind: "voicemail",
       voicemailId,
       phoneNumberId,
@@ -223,6 +246,58 @@ export async function POST(request: Request) {
       occurredAt: date(resource.createdAt),
       quoLink,
     });
+    console.log("[quo] call activity", { type: eventType, result: logged });
+    return ok();
+  }
+
+  if (eventType === "call.summary.completed") {
+    const callId = str(resource.callId);
+    if (!callId || !phoneNumberId) return badRequest("missing call identity");
+    if (str(resource.processingStatus) !== "completed") return ok();
+    const externalPhone =
+      firstString(record(context.participants)?.external) ??
+      str(resource.fromPhoneNumber);
+    if (!externalPhone) return skipped(eventType, "no_caller_number");
+    const summary = stringList(resource.summary);
+    const nextSteps = stringList(resource.nextSteps);
+    const details = (Array.isArray(resource.jobs) ? resource.jobs : [])
+      .flatMap((job) => {
+        const data = record(record(job)?.result)?.data;
+        return Array.isArray(data) ? data : [];
+      })
+      .flatMap((item) => {
+        const entry = record(item);
+        const name = str(entry?.name);
+        const value = entry?.value;
+        const text =
+          typeof value === "string"
+            ? value.trim()
+            : typeof value === "number" || typeof value === "boolean"
+              ? String(value)
+              : "";
+        return name && text ? [{ name, value: text }] : [];
+      })
+      .slice(0, 40);
+    if (
+      summary.length === 0 &&
+      nextSteps.length === 0 &&
+      details.length === 0
+    ) {
+      return ok();
+    }
+    const logged = await logQuoCallActivity({
+      kind: "summary",
+      callId,
+      phoneNumberId,
+      externalPhone,
+      handledByAiAgent: resource.handledByAiAgent === true,
+      summary,
+      nextSteps,
+      details,
+      occurredAt: date(payload.createdAt),
+      quoLink,
+    });
+    console.log("[quo] call activity", { type: eventType, result: logged });
     return ok();
   }
 
