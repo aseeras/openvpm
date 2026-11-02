@@ -19,7 +19,8 @@ import MWDATInputs
 ///
 /// Speech is recognized on the phone (on-device when the phone supports it)
 /// from the glasses' Bluetooth microphone, and answers come from the same
-/// read-only assistant as the Siri actions. Photos and recordings are handed
+/// assistant as the Siri actions. It only changes something (a SOAP draft,
+/// vitals) after reading the change out and hearing the vet say yes. Photos and recordings are handed
 /// to the open page so they land on the right patient and visit, exactly as
 /// if the buttons on screen were used.
 @MainActor
@@ -263,10 +264,50 @@ final class GlassesMode {
             return await runPageAction?("recordStop")
                 ?? "Nothing is recording on the open page."
         case .ask(let question):
-            return await ClinicAssistant.ask(question, context: pageContext?() ?? [:])
+            let context = pageContext?() ?? [:]
+            let first = await ClinicAssistant.reply(to: question, context: context, confirm: true)
+            guard first.needsApproval else { return first.answer }
+            return await confirmChange(question: question, proposal: first.answer, context: context)
         case .turnOff:
             return "ZenPaws is off."
         }
+    }
+
+    /// The assistant wants to save something: read out what, and save it
+    /// only if the vet says yes, as the web assistant's "Allow this change"
+    /// button does.
+    private func confirmChange(question: String, proposal: String, context: [String: String]) async -> String {
+        await show(reply: proposal, speak: proposal)
+        await speech.say("Yes or no?")
+        await lens?.show(title: "Say yes or no", body: proposal)
+        state.listening = true
+        let heard = await speech.transcribeOnce()
+        state.listening = false
+        state.heard = heard
+        guard let heard, Self.isYes(heard) else {
+            return "Okay, I didn't change anything."
+        }
+        await lens?.show(title: "Saving...", body: nil)
+        let approval = "Yes, go ahead and make that change. (Original request: \(question))"
+        let done = await ClinicAssistant.reply(
+            to: String(approval.prefix(2000)),
+            context: context,
+            confirm: true,
+            approved: true,
+            history: [(role: "user", content: question), (role: "assistant", content: proposal)]
+        )
+        return done.answer
+    }
+
+    /// A clear yes. Anything with a no in it, or nothing heard, is a no.
+    static func isYes(_ heard: String) -> Bool {
+        let words = Set(heard.lowercased()
+            .components(separatedBy: CharacterSet.letters.inverted)
+            .filter { !$0.isEmpty })
+        let no: Set<String> = ["no", "nope", "don", "dont", "cancel", "stop", "wait", "not"]
+        if !words.isDisjoint(with: no) { return false }
+        let yes: Set<String> = ["yes", "yeah", "yep", "yup", "sure", "okay", "ok", "confirm", "save", "approve", "correct"]
+        return !words.isDisjoint(with: yes) || heard.lowercased().contains("go ahead") || heard.lowercased().contains("do it")
     }
 
     private func show(reply: String, speak spoken: String) async {

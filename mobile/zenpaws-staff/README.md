@@ -38,8 +38,9 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
   listens for a request, and a double press stops a visit recording. Spoken
   requests are recognized on the phone from the glasses' microphone: "record
   visit", "stop recording", "take a photo", "turn off glasses", or any
-  question for the read-only clinic assistant, which knows the patient or
-  visit on screen. Replies play in the glasses and, on Meta Ray-Ban Display,
+  question for the clinic assistant, which knows the patient or visit on
+  screen. When the assistant wants to change something (a SOAP draft,
+  vitals), it reads the change out and saves it only after the vet says yes. Replies play in the glasses and, on Meta Ray-Ban Display,
   show on the lens. Photos and recordings go through the open page
   (`apps/web/lib/glasses/page-actions.ts`), so the usual consent and patient
   rules apply. The capture button needs Inputs enabled for the app in the
