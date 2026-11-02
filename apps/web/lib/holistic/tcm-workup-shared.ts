@@ -12,6 +12,30 @@ export interface TcmPattern {
   evidence: string[];
 }
 
+export type Likelihood = "high" | "moderate" | "low";
+
+/** One conventional possible diagnosis the AI weighed from the inputs. */
+export interface TcmDifferential {
+  diagnosis: string;
+  likelihood: Likelihood;
+  supporting: string[];
+  against: string[];
+}
+
+/** The AI's own diagnostic read of every input, before treatment. */
+export interface TcmDiagnosticAssessment {
+  /** One or two sentences: the most likely explanation. */
+  impression: string;
+  /** Conventional possible diagnoses, most likely first. */
+  differentials: TcmDifferential[];
+  /** Tests or exam steps that would confirm or rule out the list. */
+  recommendedDiagnostics: string[];
+  /** Findings that need prompt attention (emergency or referral). */
+  redFlags: string[];
+  /** Whether the AI's read agrees with the veterinarian's diagnosis. */
+  agreementWithVet: string;
+}
+
 export interface TcmPointPlan {
   code: string;
   name: string;
@@ -21,6 +45,7 @@ export interface TcmPointPlan {
 }
 
 export interface TcmWorkup {
+  diagnostic: TcmDiagnosticAssessment | null;
   summary: string;
   eightPrinciples: {
     yinYang: string;
@@ -72,6 +97,24 @@ export function formatTcmWorkupAsText(workup: TcmWorkup): string {
     if (body.length > 0) out.push(`${heading}\n${body.join("\n")}`);
   };
 
+  if (workup.diagnostic) {
+    const d = workup.diagnostic;
+    push("AI DIAGNOSTIC ASSESSMENT (draft, for veterinarian review)", [
+      d.impression,
+      d.agreementWithVet && `Compared with the veterinarian's diagnosis: ${d.agreementWithVet}`,
+    ]);
+    push(
+      "Possible diagnoses",
+      d.differentials.map((x) => {
+        const parts = [`- ${x.diagnosis} (${x.likelihood})`];
+        if (x.supporting.length) parts.push(`for: ${x.supporting.join("; ")}`);
+        if (x.against.length) parts.push(`against: ${x.against.join("; ")}`);
+        return parts.join(" ");
+      }),
+    );
+    push("Suggested diagnostics", d.recommendedDiagnostics.map((x) => `- ${x}`));
+    push("Red flags", d.redFlags.map((x) => `- ${x}`));
+  }
   push("TCVM ASSESSMENT", [workup.summary]);
   push(
     "Pattern(s)",
