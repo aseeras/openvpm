@@ -3,7 +3,8 @@ export type CommunicationStatus =
   | "sent"
   | "delivered"
   | "read"
-  | "failed";
+  | "failed"
+  | "draft";
 
 export type CommunicationStatusInput = {
   status: string | null | undefined;
@@ -18,6 +19,7 @@ const communicationStatusLabels: Record<CommunicationStatus, string> = {
   delivered: "Delivered",
   read: "Read",
   failed: "Failed",
+  draft: "Draft, not sent",
 };
 const unreadInboundStatuses = new Set(["pending", "sent", "delivered"]);
 

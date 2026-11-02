@@ -326,7 +326,9 @@ async function projectEvidence(
     )
     .limit(1);
 
-  if (!communication) {
+  // A draft (written by the texting assistant, not yet sent) never has a send
+  // attempt; treat a link to one like a missing row.
+  if (!communication || communication.status === "draft") {
     await appendHistory(tx, {
       deliveryEventId: evidence.id,
       practiceId: attempt.practiceId,
@@ -386,6 +388,7 @@ async function projectEvidence(
         .limit(1);
       if (
         !current ||
+        current.status === "draft" ||
         COMMUNICATION_RANK[current.status] < DELIVERY_RANK[classification]
       ) {
         await appendHistory(tx, {

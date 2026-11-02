@@ -1,0 +1,1 @@
+ALTER TYPE "public"."comm_status" ADD VALUE 'draft';

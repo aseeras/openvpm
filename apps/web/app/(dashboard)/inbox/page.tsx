@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/common/empty-state";
+import { AssistantActions } from "@/components/inbox/assistant-actions";
 import { cn } from "@/lib/utils";
 import {
   CLIENT_SEARCH_MAX_LENGTH,
@@ -58,6 +59,7 @@ type InboxListItem = {
   assignedToName: string | null;
   readAt?: Date | string | null;
   providerMessageId: string | null;
+  dedupeKey?: string | null;
   createdAt: Date | string | null;
   clientFirstName: string | null;
   clientLastName: string | null;
@@ -941,6 +943,11 @@ export default function InboxPage() {
                         </span>
                       ) : null}
                     </div>
+                    <AssistantActions
+                      item={selectedUnmatched}
+                      canMutate={canMutateInbox}
+                      onChanged={() => setSelectedUnmatched(null)}
+                    />
                   </div>
                 </div>
               </div>
@@ -1153,6 +1160,10 @@ export default function InboxPage() {
                               </span>
                             ) : null}
                           </div>
+                          <AssistantActions
+                            item={msg}
+                            canMutate={canMutateInbox}
+                          />
                         </div>
                       </div>
                     );

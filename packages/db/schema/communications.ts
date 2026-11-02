@@ -31,6 +31,9 @@ export const commStatusEnum = pgEnum("comm_status", [
   "delivered",
   "read",
   "failed",
+  // A reply the texting assistant wrote that has not been sent; staff review
+  // and send it. Never picked up by delivery sweeps.
+  "draft",
 ]);
 
 export const communications = pgTable(

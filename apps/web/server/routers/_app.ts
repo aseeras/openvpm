@@ -35,6 +35,7 @@ import { waitlistRouter } from "./waitlist";
 import { subscriptionRouter } from "./subscription";
 import { adminRouter } from "./admin";
 import { messagingRouter } from "./messaging";
+import { textingAssistantRouter } from "./texting-assistant";
 import { bookingRouter } from "./booking";
 import { careRemindersRouter } from "./care-reminders";
 import { migrationArchiveRouter } from "./migration-archive";
@@ -77,6 +78,7 @@ export const appRouter = createRouter({
   subscription: subscriptionRouter,
   admin: adminRouter,
   messaging: messagingRouter,
+  textingAssistant: textingAssistantRouter,
   booking: bookingRouter,
   careReminders: careRemindersRouter,
   migrationArchive: migrationArchiveRouter,

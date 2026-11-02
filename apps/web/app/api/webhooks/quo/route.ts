@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { readRequestTextWithLimit } from "@/lib/request-json";
 import {
   MESSAGING_WEBHOOK_BODY_MAX_BYTES,
@@ -6,7 +6,10 @@ import {
 } from "@/lib/messaging-webhook-limits";
 import { normalizeE164 } from "@/lib/messaging";
 import { envValue } from "@/lib/messaging/env";
-import { classifyInboundSms } from "@/lib/messaging/inbound";
+import {
+  classifyInboundSms,
+  inboundSmsDedupeKey,
+} from "@/lib/messaging/inbound";
 import {
   logQuoCallActivity,
   openVpmSentThroughQuo,
@@ -16,6 +19,7 @@ import {
   ingestSmsProviderEvent,
   projectSmsProviderEvent,
 } from "@/lib/messaging/sms-provider-events";
+import { replyToInboundTextLater } from "@/lib/texting-assistant/assistant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -167,6 +171,7 @@ export async function POST(request: Request) {
       (hasMedia ? "(Sent a photo or attachment. Open it in Quo.)" : null);
     if (!text) return ok();
 
+    const classification = classifyInboundSms(text);
     const ingested = await ingestSmsProviderEvent({
       provider: "quo",
       kind: "inbound",
@@ -179,9 +184,18 @@ export async function POST(request: Request) {
       toE164: toPhone,
       messagingProfileId: phoneNumberId,
       messageBody: text,
-      inboundClassification: classifyInboundSms(text),
+      inboundClassification: classification,
     });
-    if (!ingested.conflict) await projectSmsProviderEvent(ingested.eventId);
+    if (!ingested.conflict) {
+      await projectSmsProviderEvent(ingested.eventId);
+      // STOP/START/HELP are answered by the opt-out handling, never the
+      // texting assistant. Everything else may get an assistant reply when
+      // the practice has turned it on.
+      const dedupeKey = inboundSmsDedupeKey("quo", providerMessageId);
+      if (classification === "other" && dedupeKey) {
+        after(() => replyToInboundTextLater({ dedupeKey }));
+      }
+    }
     return ok();
   }
 
