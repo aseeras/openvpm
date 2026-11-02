@@ -192,6 +192,9 @@ final class GlassesSession {
         for device in devices {
             NSLog("[glasses] \(device.nameOrId()): link \(device.linkState), compatibility \(device.compatibility())")
         }
+        let details = devices.isEmpty
+            ? "no glasses listed"
+            : devices.map { "\($0.nameOrId()): \($0.linkState), \($0.compatibility())" }.joined(separator: "; ")
         if devices.contains(where: { $0.compatibility() == .deviceUpdateRequired }) {
             return "Your glasses need a software update. Update them in the Meta AI app, then try again."
         }
@@ -199,9 +202,8 @@ final class GlassesSession {
             return "Your glasses' software is newer than this ZenPaws build supports. ZenPaws needs an update."
         }
         if !devices.contains(where: { $0.linkState == .connected }) {
-            return "Your glasses aren't connected right now. Put them on, open the Meta AI app until they show as connected, then come back and try again."
+            return "Your glasses aren't connected right now (\(details)). Put them on, open the Meta AI app until they show as connected, then come back and try again."
         }
-        let details = devices.map { "\($0.nameOrId()): \($0.linkState), \($0.compatibility())" }.joined(separator: "; ")
         return "Your glasses aren't ready for ZenPaws yet (\(details)). Check Developer Mode is on in Meta AI, then try again."
     }
 
