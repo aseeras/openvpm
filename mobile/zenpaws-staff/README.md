@@ -47,10 +47,11 @@ What the native layer adds (`ios/App/App/StaffBridgeViewController.swift`):
   Meta". The first photo opens the Meta AI app twice:
   once to allow the app, once to allow the camera. Until the app has a Meta
   Wearables Developer Center ID, each phone needs Meta AI's Developer Mode
-  (Settings > App Info, tap the version 5 times). With an ID, add the
-  `META_WEARABLES_APP_ID` and `META_WEARABLES_CLIENT_TOKEN` repository secrets
-  (the build passes them as `META_APP_ID` and `META_CLIENT_TOKEN`) and invite
-  staff to the integration's release channel. The toolkit needs iOS 17.2, so the app does
+  (Settings > App Info, tap the version 5 times). Leaving Developer Mode
+  needs the Developer Center app ID and client token as the `META_APP_ID` and
+  `META_CLIENT_TOKEN` build settings, an https universal link that opens the
+  app, and staff invited to the integration's release channel; the build does
+  not set them yet. The toolkit needs iOS 17.2, so the app does
   too. Meta does not yet allow toolkit apps in the App Store, so the
   app stays on TestFlight internal testing, which has no App Review.
 - **Offline:** `www/offline.html` is shown when the system cannot be reached.
