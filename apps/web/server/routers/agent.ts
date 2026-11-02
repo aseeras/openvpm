@@ -12,6 +12,7 @@ import type { Database } from "@openpims/db/client";
 import {
   runAgent,
   isAgentConfigured,
+  agentSetupHint,
   AGENT_TOOL_NAMES,
   AgentNotConfiguredError,
   AgentBillingAccessError,
@@ -66,6 +67,8 @@ export const agentRouter = createRouter({
 
     return {
       configured: isAgentConfigured(),
+      // Self-host only: which setting is missing (never a secret value).
+      setupHint: hosted ? null : agentSetupHint(),
       // Hosted users get a friendly "unavailable" message when unconfigured;
       // self-host admins get env-var instructions they can act on.
       hosted,

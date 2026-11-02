@@ -32,6 +32,12 @@ import {
  * directly, and the SDK runs the tool-use loop for us up to MAX_ITERATIONS.
  */
 const DEFAULT_MODEL = "gemini-3.5-flash";
+/**
+ * Used when no model is named, Vertex AI is not configured, and an Anthropic
+ * key is present, so a self-hosted clinic that only adds ANTHROPIC_API_KEY
+ * gets a working agent instead of a "configure Vertex" banner.
+ */
+export const DEFAULT_CLAUDE_MODEL = "claude-sonnet-5-5";
 const MAX_ITERATIONS = 10;
 // Room for a full SOAP draft passed as tool input plus the reply.
 const MAX_OUTPUT_TOKENS = 4096;
@@ -153,13 +159,19 @@ function nonBlank(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-/** Resolve the model id from request override → AI_MODEL → legacy AGENT_MODEL → default. */
+/**
+ * Resolve the model id from request override → AI_MODEL → legacy AGENT_MODEL
+ * → default. The default is Gemini on Vertex, or Claude when only an
+ * Anthropic key is configured.
+ */
 function activeModelId(override?: string): string {
   return (
     nonBlank(override) ??
     nonBlank(process.env.AI_MODEL) ??
     nonBlank(process.env.AGENT_MODEL) ??
-    DEFAULT_MODEL
+    (!hasVertexConfiguration() && anthropicApiKey()
+      ? DEFAULT_CLAUDE_MODEL
+      : DEFAULT_MODEL)
   );
 }
 
@@ -232,6 +244,21 @@ function hasProviderConfiguration(modelId: string): boolean {
   return isGoogleModel(modelId)
     ? hasVertexConfiguration()
     : Boolean(anthropicApiKey());
+}
+
+/**
+ * A self-host admin's next step when the agent is not configured, naming the
+ * setting that is missing. Never includes secret values.
+ */
+export function agentSetupHint(): string | null {
+  const modelId = activeModelId();
+  if (hasProviderConfiguration(modelId)) return null;
+  if (isGoogleModel(modelId)) {
+    return anthropicApiKey()
+      ? `The model is set to ${modelId} (Gemini), but Google Vertex AI is not configured. Set AI_MODEL to a Claude model (e.g. ${DEFAULT_CLAUDE_MODEL}) to use your Anthropic key, or configure Vertex AI.`
+      : "No AI provider is configured. Set ANTHROPIC_API_KEY (a Claude model is then used by default), or configure Google Vertex AI for Gemini.";
+  }
+  return `The model is set to ${modelId} (Claude), but ANTHROPIC_API_KEY is not set.`;
 }
 
 /** Whether the configured provider has a complete authentication boundary. */

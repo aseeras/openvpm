@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { AgentNotConfiguredError, isAgentConfigured } from "../runner";
+import {
+  AgentNotConfiguredError,
+  agentSetupHint,
+  isAgentConfigured,
+} from "../runner";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -62,10 +66,36 @@ describe("isAgentConfigured (provider-agnostic)", () => {
   it("defaults to Gemini on Vertex when AI_MODEL/AGENT_MODEL are blank", () => {
     vi.stubEnv("AI_MODEL", " ");
     vi.stubEnv("AGENT_MODEL", "   ");
-    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
     expect(isAgentConfigured()).toBe(false);
     stubVertexOidcConfiguration();
     expect(isAgentConfigured()).toBe(true);
+    expect(agentSetupHint()).toBeNull();
+  });
+
+  it("uses Claude by default when only an Anthropic key is configured", () => {
+    vi.stubEnv("AI_MODEL", " ");
+    vi.stubEnv("AGENT_MODEL", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+    expect(isAgentConfigured()).toBe(true);
+    expect(agentSetupHint()).toBeNull();
+  });
+
+  it("names the missing setting for a self-host admin", () => {
+    vi.stubEnv("AI_MODEL", "");
+    vi.stubEnv("AGENT_MODEL", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    expect(agentSetupHint()).toContain("Set ANTHROPIC_API_KEY");
+
+    vi.stubEnv("AI_MODEL", "gemini-3.5-flash");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-secret-value");
+    const geminiHint = agentSetupHint();
+    expect(geminiHint).toContain("Set AI_MODEL to a Claude model");
+    expect(geminiHint).not.toContain("sk-ant");
+
+    vi.stubEnv("AI_MODEL", "claude-sonnet-5-5");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    expect(agentSetupHint()).toContain("ANTHROPIC_API_KEY is not set");
   });
 
   it("trims the legacy AGENT_MODEL fallback before choosing the provider", () => {
