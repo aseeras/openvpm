@@ -9,7 +9,8 @@ import { AGENT_INSTRUCTION_MAX_LENGTH } from "@/lib/agent/policy";
 import { spokenAnswer } from "@/lib/agent/spoken";
 
 /**
- * Voice entry point for the staff iPhone app's Siri actions. Uses the staff
+ * Voice entry point for the staff iPhone app's Siri actions and smart-glasses
+ * mode. Uses the staff
  * member's existing sign-in cookie and runs the same `agent.run` procedure
  * as the web assistant (same roles, feature gate, tenant scope and rate
  * limits), always read-only, and returns plain text suitable for speech.
@@ -24,6 +25,17 @@ const ASSISTANT_CLIENT_HEADER = "x-openvpm-client";
 const NO_STORE = { "Cache-Control": "private, no-store, max-age=0" };
 const body = z.object({
   question: z.string().trim().min(1).max(AGENT_INSTRUCTION_MAX_LENGTH),
+  /**
+   * What the staff member has open in the app (the smart-glasses mode sends
+   * it), so "this patient" and "this visit" resolve without naming them.
+   * The agent still checks access to whatever it reads.
+   */
+  context: z
+    .object({
+      patientId: z.string().guid().optional(),
+      appointmentId: z.string().guid().optional(),
+    })
+    .optional(),
 });
 
 function reply(answer: string, status = 200) {
@@ -57,6 +69,7 @@ export async function POST(req: NextRequest) {
       instruction: input.data.question,
       allowWrites: false,
       voice: true,
+      context: input.data.context,
     });
     return reply(spokenAnswer(result.text) || "I don't have an answer for that.");
   } catch (error) {

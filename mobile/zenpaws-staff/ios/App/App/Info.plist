@@ -60,6 +60,7 @@
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>audio</string>
 		<string>bluetooth-central</string>
 		<string>bluetooth-peripheral</string>
 		<string>external-accessory</string>
@@ -85,7 +86,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>ZenPaws VPM uses the camera for video visits and to photograph patients and documents for their records.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>ZenPaws VPM uses the microphone for video visits and, with the client's consent, to record visit audio for transcripts.</string>
+	<string>ZenPaws VPM uses the microphone for video visits, for requests you speak through your smart glasses and, with the client's consent, to record visit audio for transcripts.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>ZenPaws VPM turns what you say through your smart glasses into requests, such as "record visit" or a question for the assistant.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

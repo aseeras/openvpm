@@ -9,8 +9,9 @@ import MWDATCamera
 ///
 /// - "Take with glasses" on a patient's holistic workup takes a photo with
 ///   the glasses' camera and adds it to that patient's photos.
-/// - "Hey Meta, start ZenPaws" on the glasses does the same, hands-free, for
-///   the patient that is open in the app.
+/// - Glasses mode (`GlassesMode.swift`): the capture button, voice requests,
+///   spoken replies and, on Meta Ray-Ban Display, the lens.
+/// - "Hey Meta, start ZenPaws" turns glasses mode on and listens.
 ///
 /// The glasses connect through the Meta AI app: the first photo opens Meta AI
 /// to allow ZenPaws, then again to allow the camera. Photos go straight to the
@@ -19,10 +20,6 @@ enum MetaGlasses {
     /// Meta AI calls the app back on this scheme after the vet allows it.
     /// Must match `MWDAT > AppLinkURLScheme` and `CFBundleURLTypes` in Info.plist.
     static let urlScheme = "zenpawsstaff"
-
-    /// Posted when the vet says "Hey Meta, start ZenPaws"; the web view asks
-    /// the open page to take a glasses photo.
-    static let captureRequested = Notification.Name("ZenPawsGlassesCaptureRequested")
 
     static func configure() {
         do {
@@ -64,70 +61,83 @@ struct GlassesFailure: Error {
     let message: String
 }
 
-/// Takes one photo with the connected glasses.
+/// The one connection to the glasses. The toolkit allows a single session at
+/// a time, so the camera and glasses mode share it: it starts when the first
+/// of them needs it and stops when the last lets go.
 @MainActor
-final class GlassesCamera {
-    static let shared = GlassesCamera()
+final class GlassesSession {
+    enum Holder: Hashable { case camera, mode }
 
-    private var busy = false
-    private static let sessionTimeoutSeconds: UInt64 = 20
-    private static let photoTimeoutSeconds: Double = 45
-    /// Photos are shrunk before they leave the phone; the chart and the AI
-    /// workup read them at up to 1600 px anyway.
-    private static let maxEdge: CGFloat = 2048
+    static let shared = GlassesSession()
 
-    func takePhoto() async throws -> Data {
-        guard !busy else {
-            throw GlassesFailure(message: "The glasses are already taking a photo.")
-        }
-        busy = true
-        defer { busy = false }
+    private(set) var session: DeviceSession?
+    private var holders = Set<Holder>()
+    private var watchTask: Task<Void, Never>?
+    private static let startTimeoutSeconds: UInt64 = 20
 
+    /// Called when the glasses disconnect or the session ends on its own.
+    var onEnded: (() -> Void)?
+
+    func acquire(_ holder: Holder) async throws -> DeviceSession {
         let wearables = Wearables.shared
-        try await ensureRegistered(wearables)
-        try await ensureCameraAllowed(wearables)
-
+        try await Self.ensureRegistered(wearables)
+        if let session, session.state == .started || session.state == .paused {
+            holders.insert(holder)
+            return session
+        }
         guard !wearables.devices.isEmpty else {
             throw GlassesFailure(message: "No glasses found. Put them on and check they're connected in the Meta AI app.")
         }
+        end()
 
-        let session: DeviceSession
+        let created: DeviceSession
         do {
-            session = try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables))
+            created = try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables))
+        } catch DeviceSessionError.datAppOnTheGlassesUpdateRequired {
+            throw GlassesFailure(message: "The glasses need a software update. Update them in the Meta AI app, then try again.")
         } catch {
             throw GlassesFailure(message: "Couldn't connect to the glasses: \(MetaGlasses.describe(error))")
         }
-        defer { session.stop() }
-
         // Listen before starting so the change to "started" isn't missed.
-        let states = session.stateStream()
+        let states = created.stateStream()
         do {
-            try session.start()
+            try created.start()
         } catch {
+            created.stop()
             throw GlassesFailure(message: "Couldn't connect to the glasses: \(MetaGlasses.describe(error))")
         }
-        guard await Self.waitUntilStarted(session, states: states) else {
+        guard await Self.waitUntilStarted(created, states: states) else {
+            created.stop()
             throw GlassesFailure(message: "The glasses didn't connect. Check they're on, unfolded and connected in the Meta AI app.")
         }
-
-        let camera: Camera
-        do {
-            guard let added = try session.addCamera() else {
-                throw GlassesFailure(message: "Couldn't open the glasses camera. Try again.")
+        session = created
+        holders.insert(holder)
+        watchTask = Task { @MainActor [weak self] in
+            for await state in created.stateStream() where state == .stopped {
+                guard let self, self.session === created else { return }
+                self.session = nil
+                self.holders.removeAll()
+                self.onEnded?()
+                return
             }
-            camera = added
-        } catch let failure as GlassesFailure {
-            throw failure
-        } catch {
-            throw GlassesFailure(message: "Couldn't open the glasses camera: \(MetaGlasses.describe(error))")
         }
-        defer { camera.stop() }
-
-        let imageData = try await Self.capture(with: camera.photo)
-        return Self.shrunkJPEG(imageData) ?? imageData
+        return created
     }
 
-    private func ensureRegistered(_ wearables: any WearablesInterface) async throws {
+    func release(_ holder: Holder) {
+        holders.remove(holder)
+        if holders.isEmpty { end() }
+    }
+
+    private func end() {
+        watchTask?.cancel()
+        watchTask = nil
+        session?.stop()
+        session = nil
+        holders.removeAll()
+    }
+
+    static func ensureRegistered(_ wearables: any WearablesInterface) async throws {
         switch wearables.registrationState {
         case .registered:
             return
@@ -143,18 +153,7 @@ final class GlassesCamera {
         } catch {
             throw GlassesFailure(message: "Couldn't open the Meta AI app: \(MetaGlasses.describe(error))")
         }
-        throw GlassesFailure(message: "Allow ZenPaws in the Meta AI app, then come back and take the photo again.")
-    }
-
-    private func ensureCameraAllowed(_ wearables: any WearablesInterface) async throws {
-        do {
-            if try await wearables.checkPermissionStatus(.camera) == .granted { return }
-            // Opens Meta AI, where the vet allows the camera, and returns here.
-            if try await wearables.requestPermission(.camera) == .granted { return }
-        } catch {
-            throw GlassesFailure(message: "Couldn't check camera access in the Meta AI app: \(MetaGlasses.describe(error))")
-        }
-        throw GlassesFailure(message: "Camera access for ZenPaws wasn't allowed in the Meta AI app.")
+        throw GlassesFailure(message: "Allow ZenPaws in the Meta AI app, then come back and try again.")
     }
 
     private static func waitUntilStarted(
@@ -171,13 +170,77 @@ final class GlassesCamera {
                 return false
             }
             group.addTask {
-                try? await Task.sleep(nanoseconds: sessionTimeoutSeconds * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: startTimeoutSeconds * 1_000_000_000)
                 return false
             }
             let started = await group.next() ?? false
             group.cancelAll()
             return started
         }
+    }
+}
+
+/// Takes one photo with the connected glasses.
+@MainActor
+final class GlassesCamera {
+    static let shared = GlassesCamera()
+
+    private var busy = false
+    private static let photoTimeoutSeconds: Double = 45
+    /// Photos are shrunk before they leave the phone; the chart and the AI
+    /// workup read them at up to 1600 px anyway.
+    private static let maxEdge: CGFloat = 2048
+
+    func takePhoto() async throws -> Data {
+        guard !busy else {
+            throw GlassesFailure(message: "The glasses are already taking a photo.")
+        }
+        busy = true
+        defer { busy = false }
+
+        let wearables = Wearables.shared
+        try await GlassesSession.ensureRegistered(wearables)
+        try await ensureCameraAllowed(wearables)
+
+        let session = try await GlassesSession.shared.acquire(.camera)
+        defer { GlassesSession.shared.release(.camera) }
+
+        let camera = try attachedCamera(on: session)
+        let imageData = try await Self.capture(with: camera.photo)
+        return Self.shrunkJPEG(imageData) ?? imageData
+    }
+
+    /// The camera on the current connection. It stays attached while glasses
+    /// mode keeps the connection open, so later photos reuse it, and stops
+    /// with the connection.
+    private var cachedCamera: Camera?
+    private weak var cameraSession: DeviceSession?
+
+    private func attachedCamera(on session: DeviceSession) throws -> Camera {
+        if let cachedCamera, cameraSession === session { return cachedCamera }
+        do {
+            guard let added = try session.addCamera() else {
+                throw GlassesFailure(message: "Couldn't open the glasses camera. Try again.")
+            }
+            cachedCamera = added
+            cameraSession = session
+            return added
+        } catch let failure as GlassesFailure {
+            throw failure
+        } catch {
+            throw GlassesFailure(message: "Couldn't open the glasses camera: \(MetaGlasses.describe(error))")
+        }
+    }
+
+    private func ensureCameraAllowed(_ wearables: any WearablesInterface) async throws {
+        do {
+            if try await wearables.checkPermissionStatus(.camera) == .granted { return }
+            // Opens Meta AI, where the vet allows the camera, and returns here.
+            if try await wearables.requestPermission(.camera) == .granted { return }
+        } catch {
+            throw GlassesFailure(message: "Couldn't check camera access in the Meta AI app: \(MetaGlasses.describe(error))")
+        }
+        throw GlassesFailure(message: "Camera access for ZenPaws wasn't allowed in the Meta AI app.")
     }
 
     /// Starts the camera's photo mode, takes one full-size photo when it is
@@ -252,7 +315,7 @@ private final class Once: @unchecked Sendable {
 }
 
 /// "Hey Meta, start ZenPaws". Listens on the connected glasses and, when the
-/// vet says it, brings the app forward and asks the open page for a photo.
+/// vet says it, turns glasses mode on and listens for a request.
 @MainActor
 final class GlassesVoice {
     static let shared = GlassesVoice()
@@ -292,9 +355,7 @@ final class GlassesVoice {
             guard let launch = invocation as? LaunchApp else { return }
             Task {
                 _ = await launch.responseHandle.sendSuccess(actionOutput: nil)
-                await MainActor.run {
-                    NotificationCenter.default.post(name: MetaGlasses.captureRequested, object: nil)
-                }
+                await GlassesMode.shared.startFromVoice()
             }
         }.store(in: tokens)
         voice.errorPublisher.listen { [weak self] error in
@@ -315,7 +376,48 @@ public class ZenPawsGlassesPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "capturePhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startMode", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopMode", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "listen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "modeStatus", returnType: CAPPluginReturnPromise),
     ]
+
+    @objc func startMode(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do {
+                try await GlassesMode.shared.start()
+                call.resolve(GlassesMode.shared.state.dictionary)
+            } catch let failure as GlassesFailure {
+                call.reject(failure.message, "GLASSES")
+            } catch {
+                call.reject("Couldn't start glasses mode. Check the glasses are on and connected.", "GLASSES")
+            }
+        }
+    }
+
+    @objc func stopMode(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            GlassesMode.shared.stop()
+            call.resolve(GlassesMode.shared.state.dictionary)
+        }
+    }
+
+    @objc func listen(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard GlassesMode.shared.state.active else {
+                call.reject("Turn on glasses mode first.", "GLASSES")
+                return
+            }
+            GlassesMode.shared.listen()
+            call.resolve(GlassesMode.shared.state.dictionary)
+        }
+    }
+
+    @objc func modeStatus(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            call.resolve(GlassesMode.shared.state.dictionary)
+        }
+    }
 
     @objc func capturePhoto(_ call: CAPPluginCall) {
         Task { @MainActor in

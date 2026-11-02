@@ -12,7 +12,9 @@ import WebKit
 enum ClinicAssistant {
     static let baseURL = URL(string: "https://app.zenpawsdvm.com")!
 
-    static func ask(_ question: String) async -> String {
+    /// `context` names what is open in the app (`patientId`,
+    /// `appointmentId`) so "this patient" works from the glasses.
+    static func ask(_ question: String, context: [String: String] = [:]) async -> String {
         let cookies = await signInCookies()
         guard !cookies.isEmpty else {
             return "Open ZenPaws VPM and sign in first, then ask again."
@@ -28,7 +30,9 @@ enum ClinicAssistant {
         for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["question": question])
+        var body: [String: Any] = ["question": question]
+        if !context.isEmpty { body["context"] = context }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
             let (data, _) = try await URLSession.shared.data(for: request)

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { useUnsavedChangesGuard } from "@/lib/use-unsaved-changes-guard";
+import { useGlassesAction } from "@/lib/glasses/page-actions";
 
 export type RecorderSoapDraft = {
   subjective: string;
@@ -187,18 +188,19 @@ export function VisitRecorder({
     wakeLockRef.current = null;
   }
 
-  async function startRecording() {
+  /** Returns whether recording actually started. */
+  async function startRecording(): Promise<boolean> {
     const mimeType = pickMimeType();
     if (!navigator.mediaDevices?.getUserMedia || !mimeType) {
       toast.error("This browser cannot record audio.");
-      return;
+      return false;
     }
     let slot: { id: string };
     try {
       slot = await start.mutateAsync({ patientId, appointmentId });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not start.");
-      return;
+      return false;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -227,10 +229,12 @@ export function VisitRecorder({
       setElapsed(0);
       setRecording({ id: slot.id, startedAt: Date.now() });
       await refresh();
+      return true;
     } catch {
       releaseDevices();
       toast.error("Microphone access was blocked. Allow it and try again.");
       discard.mutate({ recordingId: slot.id });
+      return false;
     }
   }
 
@@ -291,6 +295,34 @@ export function VisitRecorder({
       await refresh();
     }
   }
+
+  // "Record visit" / "stop recording" from the smart glasses. Consent rules
+  // are the same as the buttons: no recording without the client's agreement.
+  const recorderReady = Boolean(data?.transcriptionConfigured);
+  useGlassesAction(
+    "recordStart",
+    async () => {
+      if (!data?.consent?.active) {
+        return "The client hasn't agreed to recording yet. Ask for consent on the phone first.";
+      }
+      if (!visitOpen) return "This visit is closed, so it can't be recorded.";
+      if (recording) return "Already recording.";
+      if (uploading || start.isPending) return "One moment, the last recording is still saving.";
+      return (await startRecording())
+        ? "Recording the visit."
+        : "I couldn't start recording. Check the phone.";
+    },
+    recorderReady,
+  );
+  useGlassesAction(
+    "recordStop",
+    async () => {
+      if (!recording) return "Nothing is recording.";
+      stopRecording();
+      return "Stopped. Uploading the recording now.";
+    },
+    recorderReady,
+  );
 
   if (state.isLoading) {
     return (

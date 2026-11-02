@@ -12,36 +12,79 @@ import AuthenticationServices
 ///   staff stay signed in;
 /// - pull down to reload;
 /// - Sign in with Apple (`StaffAppleSignInPlugin` below);
-/// - Meta smart glasses photos (`MetaGlasses.swift`).
+/// - Meta smart glasses photos and glasses mode (`MetaGlasses.swift`,
+///   `GlassesMode.swift`).
 class StaffBridgeViewController: CAPBridgeViewController {
     private var webDelegate: StaffWebViewDelegate?
     private let refresh = UIRefreshControl()
 
-    private var glassesCapturePending = false
-
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(StaffAppleSignInPlugin())
         bridge?.registerPluginInstance(ZenPawsGlassesPlugin())
-    }
-
-    /// "Hey Meta, start ZenPaws": ask the open page to take a glasses photo.
-    /// If the page is still loading, ask once it has loaded.
-    @objc private func glassesCaptureRequested() {
-        guard let webView = webView, !webView.isLoading else {
-            glassesCapturePending = true
-            return
-        }
-        glassesCapturePending = false
-        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('zenpaws:glasses-capture'))")
+        connectGlassesMode()
     }
 
     func pageDidFinishLoading() {
         adoptPageBackground()
-        if glassesCapturePending {
-            // Give the page a moment to start listening.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.glassesCaptureRequested()
+        // A page loaded while glasses mode is on shows it straight away.
+        if GlassesMode.shared.state.active {
+            sendGlassesState(GlassesMode.shared.state)
+        }
+    }
+
+    // MARK: Glasses mode
+
+    /// Glasses mode works through the open page: it asks the page to take a
+    /// photo or start recording (so they land on the patient and visit on
+    /// screen) and tells the page what the glasses are doing.
+    private func connectGlassesMode() {
+        let mode = GlassesMode.shared
+        mode.onChange = { [weak self] state in self?.sendGlassesState(state) }
+        mode.runPageAction = { [weak self] name in await self?.runGlassesAction(name) }
+        mode.pageContext = { [weak self] in StaffBridgeViewController.glassesContext(for: self?.webView?.url) }
+    }
+
+    private func sendGlassesState(_ state: GlassesMode.State) {
+        guard let webView = webView,
+              let data = try? JSONSerialization.data(withJSONObject: state.dictionary),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('zenpaws:glasses-mode', { detail: \(json) }))"
+        )
+    }
+
+    /// Runs `window.zenpawsGlassesActions[name]` on the page (see
+    /// `apps/web/lib/glasses/page-actions.ts`) and returns what to say, or
+    /// nil when the open page has no such action.
+    private func runGlassesAction(_ name: String) async -> String? {
+        guard let webView = webView else { return nil }
+        let script = """
+        const run = window.zenpawsGlassesActions && window.zenpawsGlassesActions[name];
+        if (typeof run !== "function") return null;
+        const said = await run();
+        return typeof said === "string" ? said : "Done.";
+        """
+        return await withCheckedContinuation { continuation in
+            webView.callAsyncJavaScript(script, arguments: ["name": name], in: nil, in: .page) { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value as? String)
+                case .failure:
+                    continuation.resume(returning: "That didn't work. Check the phone.")
+                }
             }
+        }
+    }
+
+    /// The patient or visit open in the app, from the page address.
+    static func glassesContext(for url: URL?) -> [String: String] {
+        guard let url, url.host == "app.zenpawsdvm.com" else { return [:] }
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard parts.count >= 2, UUID(uuidString: parts[1]) != nil else { return [:] }
+        switch parts[0] {
+        case "patients": return ["patientId": parts[1]]
+        case "encounters": return ["appointmentId": parts[1]]
+        default: return [:]
         }
     }
 
@@ -73,11 +116,6 @@ class StaffBridgeViewController: CAPBridgeViewController {
         ) { [weak webView] in
             webView?.reload()
         }
-
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(glassesCaptureRequested),
-            name: MetaGlasses.captureRequested, object: nil
-        )
 
         refresh.addTarget(self, action: #selector(reloadPage), for: .valueChanged)
         webView.scrollView.refreshControl = refresh

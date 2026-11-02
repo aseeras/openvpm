@@ -15,6 +15,7 @@ import { DemoConversionBar } from "@/components/demo/demo-conversion-bar";
 import { DemoFunnelTracker } from "@/components/demo/demo-funnel-tracker";
 import { RecoveryReviewBanner } from "@/components/layout/recovery-review-banner";
 import { AssistantLauncher } from "@/components/agent/assistant-launcher";
+import { GlassesMode } from "@/components/glasses/glasses-mode";
 
 export default function DashboardLayout({
   children,
@@ -98,6 +99,7 @@ export default function DashboardLayout({
             onClose={() => setSearchOpen(false)}
           />
           <AssistantLauncher />
+          <GlassesMode />
         </div>
         </WelcomeProvider>
       </OnboardingJourneyProvider>

@@ -19,8 +19,11 @@
 		A1C0FFEF2FE993A70072D4E8 /* StaffBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2FE993A70072D4E8 /* StaffBridgeViewController.swift */; };
 		B5D1A0022FE993A70072D4E8 /* SiriAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5D1A0012FE993A70072D4E8 /* SiriAssistant.swift */; };
 		C6E2B0022FE993A70072D4E8 /* MetaGlasses.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6E2B0012FE993A70072D4E8 /* MetaGlasses.swift */; };
+		C6E2B0092FE993A70072D4E8 /* GlassesMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6E2B0082FE993A70072D4E8 /* GlassesMode.swift */; };
 		C6E2B0042FE993A70072D4E8 /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = C6E2B0032FE993A70072D4E8 /* MWDATCore */; };
 		C6E2B0062FE993A70072D4E8 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = C6E2B0052FE993A70072D4E8 /* MWDATCamera */; };
+		C6E2B00B2FE993A70072D4E8 /* MWDATInputs in Frameworks */ = {isa = PBXBuildFile; productRef = C6E2B00A2FE993A70072D4E8 /* MWDATInputs */; };
+		C6E2B00D2FE993A70072D4E8 /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = C6E2B00C2FE993A70072D4E8 /* MWDATDisplay */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +41,7 @@
 		A1C0FFEE2FE993A70072D4E8 /* StaffBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffBridgeViewController.swift; sourceTree = "<group>"; };
 		B5D1A0012FE993A70072D4E8 /* SiriAssistant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriAssistant.swift; sourceTree = "<group>"; };
 		C6E2B0012FE993A70072D4E8 /* MetaGlasses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaGlasses.swift; sourceTree = "<group>"; };
+		C6E2B0082FE993A70072D4E8 /* GlassesMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassesMode.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,6 +52,8 @@
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
 				C6E2B0042FE993A70072D4E8 /* MWDATCore in Frameworks */,
 				C6E2B0062FE993A70072D4E8 /* MWDATCamera in Frameworks */,
+				C6E2B00B2FE993A70072D4E8 /* MWDATInputs in Frameworks */,
+				C6E2B00D2FE993A70072D4E8 /* MWDATDisplay in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +84,7 @@
 				A1C0FFEE2FE993A70072D4E8 /* StaffBridgeViewController.swift */,
 				B5D1A0012FE993A70072D4E8 /* SiriAssistant.swift */,
 				C6E2B0012FE993A70072D4E8 /* MetaGlasses.swift */,
+				C6E2B0082FE993A70072D4E8 /* GlassesMode.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -110,6 +117,8 @@
 				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
 				C6E2B0032FE993A70072D4E8 /* MWDATCore */,
 				C6E2B0052FE993A70072D4E8 /* MWDATCamera */,
+				C6E2B00A2FE993A70072D4E8 /* MWDATInputs */,
+				C6E2B00C2FE993A70072D4E8 /* MWDATDisplay */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -179,6 +188,7 @@
 				A1C0FFEF2FE993A70072D4E8 /* StaffBridgeViewController.swift in Sources */,
 				B5D1A0022FE993A70072D4E8 /* SiriAssistant.swift in Sources */,
 				C6E2B0022FE993A70072D4E8 /* MetaGlasses.swift in Sources */,
+				C6E2B0092FE993A70072D4E8 /* GlassesMode.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -415,6 +425,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C6E2B0072FE993A70072D4E8 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
 			productName = MWDATCamera;
+		};
+		C6E2B00A2FE993A70072D4E8 /* MWDATInputs */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C6E2B0072FE993A70072D4E8 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATInputs;
+		};
+		C6E2B00C2FE993A70072D4E8 /* MWDATDisplay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C6E2B0072FE993A70072D4E8 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATDisplay;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
