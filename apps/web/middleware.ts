@@ -9,6 +9,8 @@ import { nextAuthSecret } from "./lib/auth-secret";
 
 const CAPABILITY_PATH_PREFIXES = [
   "/capture",
+  "/check-in",
+  "/api/check-in",
   "/sign",
   "/treatment-plan",
   "/api/capture",
@@ -24,6 +26,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/api-docs",
   "/book",
   "/capture",
+  "/check-in",
   "/clinic-fit",
   "/email-preferences",
   "/forgot-password",

@@ -41,12 +41,17 @@ export async function sendAppointmentReminderSms(data: {
   source?: string;
   sourceId?: string;
   idempotencyKey?: string;
+  /** Pre-appointment check-in form link, when the owner hasn't filled it out. */
+  checkInUrl?: string;
 }): Promise<SmsDispatchResult> {
   const phoneInfo = data.practicePhone
     ? `Call ${data.practicePhone} to reschedule.`
     : "Contact us to reschedule.";
+  const checkIn = data.checkInUrl
+    ? ` Please fill out ${data.patientName}'s check-in form before the visit: ${data.checkInUrl}`
+    : "";
 
-  const body = `Reminder: ${data.patientName} has an appointment on ${data.appointmentDate} at ${data.appointmentTime}. ${phoneInfo}`;
+  const body = `Reminder: ${data.patientName} has an appointment on ${data.appointmentDate} at ${data.appointmentTime}. ${phoneInfo}${checkIn}`;
 
   const result = await sendSms({
     to: data.to,

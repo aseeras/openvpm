@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq, and, isNull, gte, lte, or, sql } from "drizzle-orm";
 import { db } from "@openpims/db/client";
 import {
+  appointmentCheckIns,
   appointments,
   patients,
   clients,
@@ -15,6 +16,7 @@ import {
 } from "@openpims/db";
 import { sendAppointmentReminder } from "@/lib/email";
 import { sendAppointmentReminderSms } from "@/lib/sms";
+import { checkInUrl } from "@/lib/check-in/link";
 import { isQuietHours, pickReminderChannel } from "@/lib/messaging/reminders";
 import { hasNonBlankMessagingSender } from "@/lib/messaging/sender-query";
 import { alertOps } from "@/lib/alerts";
@@ -202,6 +204,12 @@ export async function GET(request: Request) {
             coalesce(${practices.settings} -> 'demoData' -> 'clientIds', '[]'::jsonb)
               @> to_jsonb(${appointments.clientId}::text)
           `,
+          hasCheckIn: sql<boolean>`exists (
+            select 1 from ${appointmentCheckIns}
+            where ${appointmentCheckIns.practiceId} = ${appointments.practiceId}
+              and ${appointmentCheckIns.appointmentId} = ${appointments.id}
+              and ${appointmentCheckIns.deletedAt} is null
+          )`,
           isSeededDemoAppointment: sql<boolean>`
             coalesce(${practices.settings} -> 'demoData' -> 'appointmentIds', '[]'::jsonb)
               @> to_jsonb(${appointments.id}::text)
@@ -275,6 +283,20 @@ export async function GET(request: Request) {
         )
         .orderBy(appointments.startTime),
     );
+
+    // Owners who haven't filled out the pre-appointment check-in form get its
+    // link in the reminder.
+    const reminderCheckInUrl = (appt: {
+      id: string;
+      hasCheckIn?: boolean | null;
+    }): string | undefined => {
+      if (appt.hasCheckIn) return undefined;
+      try {
+        return checkInUrl(appt.id);
+      } catch {
+        return undefined;
+      }
+    };
 
     let sent = 0;
     let failed = 0;
@@ -416,6 +438,7 @@ export async function GET(request: Request) {
                 appointmentDate,
                 appointmentTime,
                 practiceName: currentRecipient.practiceName,
+                checkInUrl: reminderCheckInUrl(appt),
               });
               return {
                 held: false as const,
@@ -545,6 +568,7 @@ export async function GET(request: Request) {
                 source: "appointment_reminder",
                 sourceId: dedupeKey,
                 idempotencyKey: appointmentReminderSmsIdempotencyKey(appt),
+                checkInUrl: reminderCheckInUrl(appt),
               });
               smsAttemptId = result.attemptId;
             } catch (error) {

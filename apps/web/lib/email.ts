@@ -310,7 +310,13 @@ export async function sendAppointmentReminder(data: {
   practiceName: string;
   practicePhone?: string;
   practiceAddress?: string;
+  /** Pre-appointment check-in form link (lib/check-in/link.ts). */
+  checkInUrl?: string;
 }): Promise<{ success: boolean; id?: string; error?: string }> {
+  const checkIn = data.checkInUrl
+    ? `<p style="margin:0 0 8px;color:#111827;font-size:15px;line-height:1.6;">Before the visit, please take a few minutes to tell us how ${data.patientName} is doing: problems, habits, food, medications, and your goals.</p>
+    ${ctaButton("Fill out the check-in form", escapeEmailHtml(data.checkInUrl))}`
+    : "";
   const body = `
     <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">Hi ${data.clientName},</p>
     <p style="margin:0 0 24px;color:#111827;font-size:15px;line-height:1.6;">This is a friendly reminder about an upcoming appointment for <strong>${data.patientName}</strong>.</p>
@@ -324,6 +330,7 @@ export async function sendAppointmentReminder(data: {
         </td>
       </tr>
     </table>
+    ${checkIn}
     <p style="margin:0 0 8px;color:#111827;font-size:15px;line-height:1.6;">If you need to cancel or reschedule, please call us${data.practicePhone ? ` at <strong>${data.practicePhone}</strong>` : ""} as soon as possible.</p>
     <p style="margin:24px 0 0;color:#111827;font-size:15px;line-height:1.6;">We look forward to seeing you and ${data.patientName}!</p>
   `;
@@ -342,6 +349,57 @@ export async function sendAppointmentReminder(data: {
     html,
   });
 
+  return { success: result.success, id: result.id, error: result.error };
+}
+
+// ---------------------------------------------------------------------------
+// Pre-appointment check-in form link
+// ---------------------------------------------------------------------------
+
+function escapeEmailHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export async function sendCheckInFormEmail(data: {
+  to: string;
+  clientName: string;
+  patientName: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  practiceName: string;
+  practicePhone?: string;
+  checkInUrl: string;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const client = escapeEmailHtml(data.clientName);
+  const pet = escapeEmailHtml(data.patientName);
+  const practice = escapeEmailHtml(data.practiceName);
+  const body = `
+    <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">Hi ${client},</p>
+    <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">We're looking forward to seeing <strong>${pet}</strong> on <strong>${escapeEmailHtml(data.appointmentDate)}</strong> at <strong>${escapeEmailHtml(data.appointmentTime)}</strong>.</p>
+    <p style="margin:0 0 8px;color:#111827;font-size:15px;line-height:1.6;">To help us prepare, please fill out a short check-in form about ${pet}'s problems, daily habits, food, medications and supplements, and your goals for the visit. It takes about five minutes and you can come back to change your answers until the visit.</p>
+    ${ctaButton("Fill out the check-in form", escapeEmailHtml(data.checkInUrl))}
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">If the button doesn't work, copy this link into your browser:<br/>${escapeEmailHtml(data.checkInUrl)}</p>
+  `;
+  const html = emailLayout(
+    practice,
+    body,
+    practiceFooter({
+      practiceName: practice,
+      practicePhone: data.practicePhone
+        ? escapeEmailHtml(data.practicePhone)
+        : undefined,
+    }),
+  );
+  const result = await sendEmail({
+    to: data.to,
+    subject: `Check-in form for ${data.patientName}'s visit on ${data.appointmentDate}`,
+    html,
+  });
   return { success: result.success, id: result.id, error: result.error };
 }
 
