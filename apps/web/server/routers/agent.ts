@@ -205,6 +205,8 @@ export const agentRouter = createRouter({
           )
           .max(20)
           .optional(),
+        // Answer for speech (Siri): short, no links or Markdown.
+        voice: z.boolean().optional(),
         // What the clinician is looking at, so "this patient" resolves.
         context: z
           .object({
@@ -221,7 +223,7 @@ export const agentRouter = createRouter({
           instruction: input.instruction,
           allowWrites: input.allowWrites,
           history: input.history,
-          hints: input.context,
+          hints: input.voice ? { ...input.context, voice: true } : input.context,
           context: {
             db: ctx.db,
             practiceId: ctx.practiceId,

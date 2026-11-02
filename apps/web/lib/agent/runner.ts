@@ -63,6 +63,8 @@ export interface AgentRunContextHints {
   patientId?: string;
   /** Visit (appointment) the clinician is looking at, if any. */
   appointmentId?: string;
+  /** The answer will be read aloud (e.g. by Siri). */
+  voice?: boolean;
 }
 
 /** Per-run context appended to the system prompt: who, when, and where. */
@@ -101,6 +103,11 @@ export function buildRunContextPrompt(input: {
   if (input.hints?.appointmentId) {
     lines.push(
       `They are currently viewing visit (appointment) ${input.hints.appointmentId}; "this visit" means that appointment.`,
+    );
+  }
+  if (input.hints?.voice) {
+    lines.push(
+      "This answer will be read aloud by a voice assistant. Use plain spoken sentences: no links, Markdown, tables or ids. Keep it brief (for a day's schedule, one short sentence per visit). Nothing can be changed from voice; if asked to change something, say to open the app.",
     );
   }
   return lines.join("\n");
