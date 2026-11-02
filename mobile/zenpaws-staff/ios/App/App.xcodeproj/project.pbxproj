@@ -17,6 +17,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A1C0FFEF2FE993A70072D4E8 /* StaffBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2FE993A70072D4E8 /* StaffBridgeViewController.swift */; };
+		B5D1A0022FE993A70072D4E8 /* SiriAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5D1A0012FE993A70072D4E8 /* SiriAssistant.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A1C0FFEE2FE993A70072D4E8 /* StaffBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffBridgeViewController.swift; sourceTree = "<group>"; };
+		B5D1A0012FE993A70072D4E8 /* SiriAssistant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriAssistant.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +70,7 @@
 			children = (
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				A1C0FFEE2FE993A70072D4E8 /* StaffBridgeViewController.swift */,
+				B5D1A0012FE993A70072D4E8 /* SiriAssistant.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -164,6 +167,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				A1C0FFEF2FE993A70072D4E8 /* StaffBridgeViewController.swift in Sources */,
+				B5D1A0022FE993A70072D4E8 /* SiriAssistant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

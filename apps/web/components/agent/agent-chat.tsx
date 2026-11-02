@@ -73,12 +73,15 @@ export function AgentChat({
   variant = "page",
   hints,
   initialInstruction,
+  autoSend = false,
   onNavigate,
 }: {
   isAdmin: boolean;
   variant?: "page" | "panel";
   hints?: AgentChatHints;
   initialInstruction?: string;
+  /** Send initialInstruction as soon as the agent is ready (read-only run). */
+  autoSend?: boolean;
   /** Called when the user follows an in-app link from a reply. */
   onNavigate?: () => void;
 }) {
@@ -99,6 +102,8 @@ export function AgentChat({
       textareaRef.current?.focus();
     }
   }, [initialInstruction]);
+
+  const autoSent = useRef(false);
 
   const statusMissing = !status.isLoading && !status.error && !status.data;
   const verifiedAgentStatus =
@@ -138,6 +143,19 @@ export function AgentChat({
       setAllowWrites(false);
     }
   }, [allowWrites, canRun]);
+
+  // Siri Shortcut deep link: send the prefilled question once, without
+  // changes allowed. Anything that would change data still asks first.
+  useEffect(() => {
+    if (!autoSend || autoSent.current || !canRun || run.isPending) return;
+    const text = initialInstruction?.trim();
+    if (!text || !isAgentInstructionValid(text)) return;
+    autoSent.current = true;
+    setInstruction("");
+    send(text, false);
+    // send() is stable for this purpose; only readiness should retrigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSend, canRun, initialInstruction]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -313,6 +331,8 @@ export function AgentChat({
           The agent is not available right now. We are on it. Please check back
           soon.
         </p>
+      ) : verifiedAgentStatus?.setupHint ? (
+        <p>{verifiedAgentStatus.setupHint}</p>
       ) : (
         <p>
           Configure Google Vertex AI with{" "}

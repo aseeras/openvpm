@@ -45,6 +45,9 @@ if [ "$HAVE_DB_ADMIN" = 1 ] && ! grep -q '^PORTAL_SIGNUP_PRACTICE_ID=.' /etc/ope
   fi
 fi
 
+# Shared secret for the app's scheduled jobs (only called from this server).
+grep -q '^CRON_SECRET=.' /etc/openvpm.env || { sed -i '/^CRON_SECRET=/d' /etc/openvpm.env; echo "CRON_SECRET=$(openssl rand -hex 32)" >> /etc/openvpm.env; }
+
 BRANCH="${1:-zenpaws}"
 cd /opt/openvpm
 sudo -u openvpm git fetch --depth 1 origin "$BRANCH"
@@ -86,6 +89,9 @@ chown -R openvpm:openvpm "$SA"
 
 systemctl restart openvpm
 for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:3000/login && break; sleep 3; done
+# Hourly morning-briefing email job (it only emails people turned on in the
+# assistant page's "Morning briefing email" section).
+bash /opt/openvpm/deploy/zenpaws/cron.sh
 # Report whether video visits came on (names only; no secret values).
 for name in TELEHEALTH_VIDEO TELEHEALTH_VIDEO_REGION S3_ACCESS_KEY S3_SECRET_KEY; do
   grep -q "^${name}=." /etc/openvpm.env && echo "  ${name}: set" || echo "  ${name}: MISSING"

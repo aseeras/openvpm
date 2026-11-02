@@ -8,6 +8,13 @@
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>ZenPaws VPM</string>
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>ZenPaws</string>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
