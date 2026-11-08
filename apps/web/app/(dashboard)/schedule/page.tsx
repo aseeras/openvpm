@@ -1282,6 +1282,9 @@ function AppointmentDetailPopover({
         : undefined,
     });
     statusActions.push({ label: "No Show", status: "no_show", variant: "outline" });
+    statusActions.push({ label: "Cancel", status: "cancelled", variant: "destructive" });
+  } else if (current === "in_exam") {
+    statusActions.push({ label: "Cancel visit", status: "cancelled", variant: "destructive" });
   } else if (current === "no_show" || current === "cancelled") {
     statusActions.push({ label: "Reopen", status: "scheduled", variant: "outline" });
   }
@@ -1770,6 +1773,15 @@ function AppointmentDetailPopover({
                   if (action.status === "confirmed") {
                     setShowRescheduleForm(false);
                     setShowConfirmationForm(true);
+                    return;
+                  }
+                  if (
+                    action.status === "cancelled" &&
+                    (current === "checked_in" || current === "in_exam") &&
+                    !window.confirm(
+                      "Cancel this visit? It has already started. Signed notes stay on the patient's record.",
+                    )
+                  ) {
                     return;
                   }
                   onStatusChange(appointment.id, action.status);
