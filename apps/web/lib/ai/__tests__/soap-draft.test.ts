@@ -55,6 +55,25 @@ describe("buildSoapDraftPrompt", () => {
     expect(prompt).not.toContain("Problem list");
     expect(prompt).not.toContain("Most recent vitals");
     expect(prompt).not.toContain("Visit context");
+    expect(prompt).not.toContain("Owner pre-visit check-in");
+    expect(prompt).not.toContain("already typed");
+  });
+
+  it("includes the clinician's typed notes and the owner check-in", () => {
+    const prompt = buildSoapDraftPrompt({
+      ...CONTEXT,
+      visitContext: "Subjective: Scratching right ear for 3 days\nObjective: Right ear canal erythematous",
+      ownerCheckIn: "Main concerns: Shaking his head\nThirst: More than usual",
+    });
+    expect(prompt).toContain(
+      "Notes the clinician has already typed for this visit (keep these facts):",
+    );
+    expect(prompt).toContain("Objective: Right ear canal erythematous");
+    expect(prompt).toContain(
+      "Owner pre-visit check-in (owner-reported, not exam findings):",
+    );
+    expect(prompt).toContain("Thirst: More than usual");
+    expect(SOAP_DRAFT_SYSTEM_PROMPT).toContain("keep every fact they wrote");
   });
 });
 
