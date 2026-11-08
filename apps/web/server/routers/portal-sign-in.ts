@@ -3,6 +3,7 @@ import { portalSignInIdentities } from "@openpims/db";
 import { createRouter, portalProcedure, publicProcedure } from "../trpc";
 import { appleSignInEnabled } from "@/lib/portal/apple-sign-in";
 import { webSignInOptions } from "@/lib/portal/web-sso";
+import { resolvePortalSession } from "@/lib/portal/session";
 
 /**
  * Sign-in options for the client app. Linking itself goes through
@@ -14,6 +15,18 @@ export const portalSignInRouter = createRouter({
    * for the iPhone app's native sheet, `web` for the browser redirect flow.
    */
   options: publicProcedure.query(() => ({ apple: appleSignInEnabled(), web: webSignInOptions() })),
+
+  /**
+   * Whether this browser has a live portal session (no session needed), so
+   * the app can show guest screens without firing signed-in-only requests
+   * that answer 401.
+   */
+  session: publicProcedure.query(async ({ ctx }) => ({
+    signedIn: Boolean(
+      (ctx.portalClient && ctx.portalSessionId) ||
+        (await resolvePortalSession(ctx.db, ctx.portalSessionToken)),
+    ),
+  })),
 
   /** Whether this client has an Apple ID connected. */
   status: portalProcedure.query(async ({ ctx }) => {
