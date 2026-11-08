@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
@@ -22,6 +22,12 @@ export function SoapNoteEditor({
   className,
 }: SoapNoteEditorProps) {
   const [isEmpty, setIsEmpty] = useState(!value);
+  // The last HTML this editor reported (or was set to). The parent echoes it
+  // back as `value`; treating that echo as an external change would push
+  // content into the editor again and can loop with editor normalization.
+  const lastHtmlRef = useRef(value || "");
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -37,8 +43,11 @@ export function SoapNoteEditor({
     ],
     content: value || "",
     onUpdate: ({ editor }) => {
+      const html = editor.isEmpty ? "" : editor.getHTML();
       setIsEmpty(editor.isEmpty);
-      onChange(editor.isEmpty ? "" : editor.getHTML());
+      if (html === lastHtmlRef.current) return;
+      lastHtmlRef.current = html;
+      onChangeRef.current(html);
     },
     editorProps: {
       attributes: {
@@ -54,9 +63,15 @@ export function SoapNoteEditor({
   useEffect(() => {
     if (!editor) return;
     const nextValue = value || "";
+    // Our own latest output coming back from the parent: nothing to do.
+    if (nextValue === lastHtmlRef.current) return;
     const currentValue = editor.isEmpty ? "" : editor.getHTML();
-    if (currentValue === nextValue) return;
-    editor.commands.setContent(nextValue, { emitUpdate: false });
+    if (currentValue !== nextValue) {
+      editor.commands.setContent(nextValue, { emitUpdate: false });
+    }
+    // Remember the editor's normalized form so a follow-up update with the
+    // same content is not reported back as a new edit.
+    lastHtmlRef.current = editor.isEmpty ? "" : editor.getHTML();
     setIsEmpty(editor.isEmpty);
   }, [editor, value]);
 
