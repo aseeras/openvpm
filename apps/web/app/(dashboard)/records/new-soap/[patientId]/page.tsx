@@ -39,6 +39,7 @@ import {
   soapEditorNeedsLeaveGuard,
 } from "@/lib/records/soap-navigation";
 import { useOnlineStatus } from "@/lib/use-online-status";
+import { SOAP_DRAFT_VISIT_CONTEXT_MAX_LENGTH } from "@/lib/ai/soap-draft-limits";
 
 const SoapNoteEditor = dynamic(
   () => import("@/components/SoapNoteEditor").then((mod) => mod.SoapNoteEditor),
@@ -417,11 +418,32 @@ export default function NewSoapNotePage() {
       return;
     if (
       canSave &&
-      !window.confirm("Replace what you typed with the AI draft?")
+      !window.confirm(
+        "Draft with AI from what you typed? The AI draft keeps your notes and fills in the rest, replacing the four sections.",
+      )
     ) {
       return;
     }
-    draftWithAi.mutate({ patientId: params.patientId, telehealthVisitId });
+    // Send what the clinician already typed, so the draft builds on it
+    // instead of replacing it with an empty template.
+    const typed = (
+      [
+        ["Subjective", subjective],
+        ["Objective", objective],
+        ["Assessment", assessment],
+        ["Plan", plan],
+      ] as const
+    )
+      .map(([label, value]) => [label, soapSectionText(value)] as const)
+      .filter(([, text]) => text)
+      .map(([label, text]) => `${label}: ${text}`)
+      .join("\n")
+      .slice(0, SOAP_DRAFT_VISIT_CONTEXT_MAX_LENGTH);
+    draftWithAi.mutate({
+      patientId: params.patientId,
+      telehealthVisitId,
+      ...(typed ? { visitContext: typed } : {}),
+    });
   }
 
   async function handleFinalize() {

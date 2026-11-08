@@ -49,6 +49,8 @@ import { optionalClinicalTextInput } from "@/lib/records/clinical-inputs";
 import { lockOpenVisitForClinicalAppend } from "@/lib/records/visit-integrity";
 import { hasUnresolvedSoapTemplatePrompts } from "@/lib/records/soap-templates";
 import { AI_SOURCE_MAX_LENGTH } from "@/lib/ai/soap";
+import { latestPatientCheckIn } from "@/lib/check-in/store";
+import { formatCheckInForClinicalContext } from "@/lib/check-in/form";
 import {
   createFinalizedAppointmentSoapNote,
   SoapLifecycleError,
@@ -490,12 +492,20 @@ export const aiRouter = createRouter({
       }
 
       try {
+        const checkIn = await latestPatientCheckIn(
+          ctx.db,
+          ctx.practiceId,
+          input.patientId,
+        );
         const draft = await draftSoapNote({
           patient,
           allergies,
           activeProblems: problems,
           latestVitals: latestVitals ?? null,
           visitContext: input.visitContext,
+          ownerCheckIn: checkIn
+            ? formatCheckInForClinicalContext(checkIn.answers) || undefined
+            : undefined,
           transcript,
         });
         // Meter successful drafts like agent runs (no-op on self-host).
