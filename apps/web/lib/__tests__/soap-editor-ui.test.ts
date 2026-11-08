@@ -64,7 +64,8 @@ describe("SOAP note editor UX", () => {
     const source = readFileSync("components/SoapNoteEditor.tsx", "utf8");
 
     expect(source).toContain('content: value || ""');
-    expect(source).toContain('onChange(editor.isEmpty ? "" : editor.getHTML())');
+    expect(source).toContain('const html = editor.isEmpty ? "" : editor.getHTML();');
+    expect(source).toContain("if (nextValue === lastHtmlRef.current) return;");
     expect(source).toContain("pointer-events-none");
     expect(source).toContain("{placeholder}");
     expect(source).toContain("useEffect");
