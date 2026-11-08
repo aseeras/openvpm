@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, Home, PawPrint, UserRound } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { usePortalSignedIn } from "@/lib/portal/use-portal-signed-in";
 import { hexToHslString } from "@/lib/utils";
 import { ZP } from "@/lib/portal/zenpaws-theme";
 import { SignInCard } from "@/components/portal/sign-in-card";
@@ -69,9 +70,14 @@ export function PortalShell({
 }) {
   const pathname = usePathname();
   const isAccessExchange = pathname.startsWith("/portal/access/");
+  const signedIn = usePortalSignedIn(!isAccessExchange);
   const client = trpc.portal.getClient.useQuery(
     {},
-    { enabled: !isAccessExchange, retry: false, staleTime: 5 * 60 * 1000 },
+    {
+      enabled: !isAccessExchange && signedIn === true,
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+    },
   );
   const accent = hexToHslString(ZP.accent);
   const themeStyle: PortalThemeStyle = {
@@ -81,7 +87,9 @@ export function PortalShell({
   };
   // Visitors without a session can look around first: the home screen and
   // previews of the other tabs; real actions ask them to sign up.
-  const isGuest = !isAccessExchange && client.error?.data?.code === "UNAUTHORIZED";
+  const isGuest =
+    !isAccessExchange &&
+    (signedIn === false || client.error?.data?.code === "UNAUTHORIZED");
   const guestGated = isGuest && pathname !== "/portal";
   // The video visit flow is full-screen with its own footer, like the design.
   const showTabs =

@@ -16,6 +16,7 @@ import { calculatePortalAge } from "@/lib/portal/date";
 import { portalLogo, ZP } from "@/lib/portal/zenpaws-theme";
 import { PetAvatar } from "@/components/portal/pet-avatar";
 import { GuestHome } from "@/components/portal/guest-home";
+import { usePortalSignedIn } from "@/lib/portal/use-portal-signed-in";
 
 const UPCOMING_STATUSES = new Set(["scheduled", "confirmed", "checked_in"]);
 
@@ -26,14 +27,18 @@ function speciesLabel(species: string | null, breed: string | null): string {
 }
 
 export default function PortalHomePage() {
-  const { data, isLoading, error } = trpc.portal.getClient.useQuery({}, { retry: false });
+  const signedIn = usePortalSignedIn();
+  const { data, isLoading, error } = trpc.portal.getClient.useQuery(
+    {},
+    { retry: false, enabled: signedIn === true },
+  );
   const video = trpc.portalTelehealth.status.useQuery(undefined, {
     enabled: Boolean(data),
     refetchInterval: 30_000,
   });
   const appointments = trpc.portal.getAppointments.useQuery({}, { enabled: Boolean(data) });
 
-  if (isLoading) {
+  if (signedIn === undefined || isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <div
@@ -45,7 +50,7 @@ export default function PortalHomePage() {
   }
 
   // No session yet: show what ZenPaws offers instead of a sign-in wall.
-  if (error?.data?.code === "UNAUTHORIZED") {
+  if (signedIn === false || error?.data?.code === "UNAUTHORIZED") {
     return <GuestHome />;
   }
 
