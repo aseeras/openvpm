@@ -58,6 +58,21 @@ function canCreateSoapNoteRole(role?: string | null): boolean {
 }
 
 /** Plain-text AI draft sections -> simple HTML the tiptap editor can load. */
+function soapVisitClosedMessage(status: string | undefined): string | null {
+  switch (status) {
+    case undefined:
+    case "in_exam":
+      return null;
+    case "cancelled":
+    case "no_show":
+      return "This visit was cancelled, so notes can't be saved to it. Reopen the visit from the schedule first.";
+    case "checked_out":
+      return "This visit is checked out, so its notes can't be changed here. Open the signed note to add an amendment.";
+    default:
+      return "Start the exam for this visit before writing its notes.";
+  }
+}
+
 function draftTextToHtml(text: string): string {
   const escaped = text
     .replace(/&/g, "&amp;")
@@ -170,6 +185,13 @@ export default function NewSoapNotePage() {
     { enabled: !!params.patientId && canCreateSoapNote && !!appointmentId },
   );
 
+  // Visit-linked drafts only save while the exam is open, so say so up front
+  // instead of letting AI drafting or typing end in "could not be saved".
+  const visitQuery = trpc.appointments.getById.useQuery(
+    { id: appointmentId ?? "" },
+    { enabled: Boolean(appointmentId), staleTime: 30_000 },
+  );
+  const visitClosedMessage = soapVisitClosedMessage(visitQuery.data?.status);
   const draftQuery = trpc.records.getSoapDraft.useQuery(
     { patientId: params.patientId, appointmentId: appointmentId! },
     {
@@ -595,6 +617,19 @@ export default function NewSoapNotePage() {
       selectedTemplate,
       { replaceExisting: replaceTemplateContent },
     );
+    if (
+      next.subjective === subjective &&
+      next.objective === objective &&
+      next.assessment === assessment &&
+      next.plan === plan
+    ) {
+      toast.info(
+        replaceTemplateContent
+          ? `${selectedTemplate.name} is already in the note`
+          : `Every section already has text. Tick "Replace existing content" to use ${selectedTemplate.name}.`,
+      );
+      return;
+    }
     setSubjective(next.subjective);
     setObjective(next.objective);
     setAssessment(next.assessment);
@@ -911,6 +946,11 @@ export default function NewSoapNotePage() {
             Draft changes save automatically. Finalization creates the signed
             clinical record.
           </p>
+          {visitClosedMessage ? (
+            <p role="status" className="text-sm font-medium text-destructive">
+              {visitClosedMessage}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -920,8 +960,13 @@ export default function NewSoapNotePage() {
               size="sm"
               onClick={handleDraftWithAi}
               disabled={
-                !isOnline || !aiConfigured || !canUseAi || draftWithAi.isPending
+                !isOnline ||
+                !aiConfigured ||
+                !canUseAi ||
+                draftWithAi.isPending ||
+                Boolean(visitClosedMessage)
               }
+              title={visitClosedMessage ?? undefined}
             >
               {draftWithAi.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
