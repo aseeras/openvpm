@@ -1076,6 +1076,10 @@ function AppointmentDetailPopover({
 }) {
   const [deleteReason, setDeleteReason] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  useEffect(() => {
+    setConfirmCancel(false);
+  }, [appointment.id, appointment.status]);
   const popoverRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const restoreFocusRef = useRef(true);
@@ -1775,13 +1779,8 @@ function AppointmentDetailPopover({
                     setShowConfirmationForm(true);
                     return;
                   }
-                  if (
-                    action.status === "cancelled" &&
-                    (current === "checked_in" || current === "in_exam") &&
-                    !window.confirm(
-                      "Cancel this visit? It has already started. Signed notes stay on the patient's record.",
-                    )
-                  ) {
+                  if (action.status === "cancelled") {
+                    setConfirmCancel(true);
                     return;
                   }
                   onStatusChange(appointment.id, action.status);
@@ -1793,6 +1792,29 @@ function AppointmentDetailPopover({
                 {action.label}
               </Button>
             ))}
+            {confirmCancel && visibleStatusActions.some((action) => action.status === "cancelled") && (
+              <div role="alertdialog" aria-label="Confirm cancelling this visit" className="w-full space-y-2 rounded-md border p-3">
+                <p className="text-sm">
+                  {current === "checked_in" || current === "in_exam"
+                    ? "Cancel this visit? It has already started. Signed notes stay on the patient's record."
+                    : "Cancel this visit?"}
+                </p>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={isUpdating}
+                  onClick={() => {
+                    setConfirmCancel(false);
+                    onStatusChange(appointment.id, "cancelled");
+                  }}
+                >
+                  Yes, cancel visit
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirmCancel(false)}>
+                  Keep visit
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

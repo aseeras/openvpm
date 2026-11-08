@@ -23,6 +23,8 @@ grep -q '^APPLE_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_SIGN_IN_CLI
 # Sign in with Apple for staff in the ZenPaws VPM app (bundle id
 # com.zenpawsdvm.staff). It only opens staff logins that already exist.
 grep -q '^APPLE_STAFF_SIGN_IN_CLIENT_IDS=' /etc/openvpm.env || echo 'APPLE_STAFF_SIGN_IN_CLIENT_IDS=com.zenpawsdvm.staff' >> /etc/openvpm.env
+# Show the clinic's name, not "OpenVPM", on sign-in pages and the browser tab.
+grep -q '^NEXT_PUBLIC_APP_NAME=' /etc/openvpm.env || echo 'NEXT_PUBLIC_APP_NAME=ZenPaws' >> /etc/openvpm.env
 # Video visits run on Amazon (Kinesis Video Streams WebRTC) with the server's
 # AWS credentials; the old third-party video settings are no longer used.
 grep -q '^TELEHEALTH_VIDEO=' /etc/openvpm.env || echo 'TELEHEALTH_VIDEO=aws_kvs' >> /etc/openvpm.env

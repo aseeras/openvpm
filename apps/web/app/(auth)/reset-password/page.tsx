@@ -9,6 +9,7 @@ import {
   AUTH_PASSWORD_MAX_LENGTH,
   AUTH_PASSWORD_MIN_LENGTH,
 } from "@/lib/auth-password-policy";
+import { APP_NAME } from "@/lib/app-name";
 
 function ResetPasswordInner() {
   const params = useSearchParams();
@@ -28,7 +29,7 @@ function ResetPasswordInner() {
     <div className="flex min-h-screen items-center justify-center bg-surface">
       <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8">
         <div className="mb-6 text-center">
-          <h1 className="font-heading text-2xl font-bold text-foreground">OpenVPM</h1>
+          <h1 className="font-heading text-2xl font-bold text-foreground">{APP_NAME}</h1>
           <p className="mt-1 text-sm text-muted-foreground">Choose a new password</p>
         </div>
 

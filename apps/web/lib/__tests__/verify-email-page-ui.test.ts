@@ -5,9 +5,9 @@ describe("verify email recovery UI", () => {
   const source = readFileSync("app/(auth)/verify-email/page.tsx", "utf8");
 
   it("keeps verification optional and routes recovery through the signed-in app", () => {
-    expect(source).toContain("Sign in to OpenVPM and use the verification banner");
+    expect(source).toContain("Sign in to {APP_NAME} and use the verification banner");
     expect(source).toContain("Any unexpired verification link will work.");
-    expect(source).toContain("Open OpenVPM to resend");
+    expect(source).toContain("Open {APP_NAME} to resend");
     expect(source).not.toContain("resendVerification.useMutation");
     expect(source).not.toContain('href="/register"');
     expect(source).not.toContain("disabled={!email");
