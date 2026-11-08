@@ -20,6 +20,7 @@ import { trackFunnelEvent } from "@/lib/track-funnel-event";
 import { getFunnelVisitorId, useFunnelVisitorId } from "@/lib/funnel-visitor";
 import { safeAuthNextPath } from "@/lib/auth-redirect";
 import { StaffAppleSignInButton } from "@/components/auth/staff-apple-sign-in";
+import { APP_NAME } from "@/lib/app-name";
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE?.trim() === "true";
 
@@ -139,7 +140,7 @@ function LoginPageInner() {
             <PawMark className="h-6 w-6" />
           </span>
           <h1 className="font-heading text-2xl font-bold text-foreground">
-            OpenVPM
+            {APP_NAME}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {DEMO_MODE

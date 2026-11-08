@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { PawMark } from "@/components/brand/paw-mark";
 import { StaffAppleConnect } from "@/components/auth/staff-apple-sign-in";
+import { APP_NAME } from "@/lib/app-name";
 
 type UserRole =
   | "admin"
@@ -183,9 +184,9 @@ export function Sidebar({
           {!isCollapsed && (
             <span
               className="truncate font-heading text-lg font-semibold"
-              title={branding?.name || "OpenVPM"}
+              title={branding?.name || APP_NAME}
             >
-              {branding?.name || "OpenVPM"}
+              {branding?.name || APP_NAME}
             </span>
           )}
         </Link>
