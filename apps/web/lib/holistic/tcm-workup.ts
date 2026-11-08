@@ -23,7 +23,12 @@ export * from "./tcm-workup-shared";
  * and copies what they keep into the visit note.
  */
 
-export const TCM_WORKUP_MAX_OUTPUT_TOKENS = 6000;
+/**
+ * A full workup (diagnostic read, patterns, and every offered modality) for a
+ * patient with a rich chart runs well past 6,000 tokens, and a reply cut off
+ * mid-JSON can't be read at all, so leave generous room.
+ */
+export const TCM_WORKUP_MAX_OUTPUT_TOKENS = 16000;
 export const TCM_WORKUP_TEXT_MAX_LENGTH = 4000;
 export const TCM_WORKUP_SHORT_TEXT_MAX_LENGTH = 500;
 /** Under the providers' per-image limits once base64 encoded. */
@@ -423,6 +428,15 @@ export async function draftTcmWorkup(
   });
 
   const workup = parseTcmWorkup(result.text, context.modalities);
-  if (!workup) throw new TcmWorkupUnavailableError();
+  if (!workup) {
+    // Record why without any clinical content, so a failure can be traced in
+    // the server log: "length" means the reply ran out of room.
+    console.warn("[tcm-workup] unusable reply", {
+      finishReason: result.finishReason,
+      outputTokens: result.usage?.outputTokens,
+      characters: result.text.length,
+    });
+    throw new TcmWorkupUnavailableError();
+  }
   return workup;
 }
