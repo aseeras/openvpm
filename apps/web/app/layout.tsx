@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, DM_Sans } from "next/font/google";
 import { Providers } from "@/lib/providers";
 import "@/styles/globals.css";
+import { APP_NAME, DEFAULT_APP_NAME } from "@/lib/app-name";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,7 +15,10 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "OpenVPM: Open-Source Veterinary Practice Management",
+  title:
+    APP_NAME === DEFAULT_APP_NAME
+      ? "OpenVPM: Open-Source Veterinary Practice Management"
+      : APP_NAME,
   description:
     "The first modern, open-source, API-first practice management system built for the veterinary community. Beautiful, fast, and free.",
   icons: {

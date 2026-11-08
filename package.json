@@ -58,6 +58,9 @@
       "uuid": "11.1.1",
       "vite@7": "7.3.7",
       "zod@4": "4.6.7"
+    },
+    "patchedDependencies": {
+      "next@15.5.28": "patches/next@15.5.28.patch"
     }
   },
   "packageManager": "pnpm@9.15.0",
