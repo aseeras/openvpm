@@ -15,12 +15,15 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TrialBadge } from "@/components/layout/trial-badge";
+import { APP_NAME } from "@/lib/app-name";
 
 const routeLabels: Record<string, string> = {
   "/": "Dashboard",
   "/patients": "Patients",
   "/clients": "Clients",
   "/schedule": "Schedule",
+  "/encounters": "Visit",
+  "/telehealth": "Telehealth",
   "/records": "Records",
   "/lab-results": "Lab Inbox",
   "/billing": "Billing",
@@ -34,6 +37,8 @@ const routeLabels: Record<string, string> = {
   "/controlled-substances": "Controlled Substances",
   "/reports": "Reports",
   "/settings": "Settings",
+  "/admin": "Admin",
+  "/onboarding": "Getting Started",
 };
 
 type UserRole =
@@ -86,7 +91,7 @@ export function TopBar({
 }) {
   const pathname = usePathname();
   const basePath = "/" + (pathname.split("/")[1] ?? "");
-  const label = routeLabels[basePath] ?? "OpenVPM";
+  const label = routeLabels[basePath] ?? APP_NAME;
   const { data: session } = useSession();
   const role = session?.user?.role as UserRole | undefined;
   const availableNewActions = role
