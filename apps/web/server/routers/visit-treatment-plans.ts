@@ -782,6 +782,14 @@ async function readPreview(
 }
 
 export const visitTreatmentPlansRouter = createRouter({
+  /**
+   * Whether treatment plan authoring is turned on for this install. Lets the
+   * visit page skip the plan lookup (and its NOT_FOUND) when it is off.
+   */
+  availability: protectedProcedure.use(clinicalRole).query(() => ({
+    enabled: treatmentPlanAuthoringEnabled(),
+  })),
+
   getForAppointment: protectedProcedure
     .use(clinicalRole)
     .input(planContextInput)

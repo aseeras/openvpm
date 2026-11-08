@@ -207,6 +207,7 @@ export function EncounterVitalsCard({
   canCorrect,
   visitStateReady,
   visitOpen,
+  visitNotStarted = false,
   timeZone,
   measurementSystem = "metric",
   bodyConditionScale = 9,
@@ -217,6 +218,8 @@ export function EncounterVitalsCard({
   canCorrect: boolean;
   visitStateReady: boolean;
   visitOpen: boolean;
+  /** The visit hasn't reached the exam yet (scheduled, confirmed, checked in). */
+  visitNotStarted?: boolean;
   timeZone?: string | null;
   measurementSystem?: MeasurementSystem;
   bodyConditionScale?: BodyConditionScale;
@@ -484,7 +487,9 @@ export function EncounterVitalsCard({
               ? "Checking whether this visit accepts new vitals..."
               : visitOpen
                 ? "Only an administrator, veterinarian, or technician can record visit vitals."
-                : "This visit is closed to new vitals. Recorded values remain read-only."}
+                : visitNotStarted
+                  ? "Vitals can be recorded once the exam has started."
+                  : "This visit is closed to new vitals. Recorded values remain read-only."}
           </div>
         )}
 

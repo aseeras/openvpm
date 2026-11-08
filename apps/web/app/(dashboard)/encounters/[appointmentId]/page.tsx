@@ -898,6 +898,11 @@ export default function EncounterWorkspacePage() {
               canCorrect={canCreateSoap(role)}
               visitStateReady={visitClinicalStateReady}
               visitOpen={visitOpenForClinicalEntry}
+              visitNotStarted={
+                appointment.status === "scheduled" ||
+                appointment.status === "confirmed" ||
+                appointment.status === "checked_in"
+              }
               timeZone={taxConfigQuery.data?.timezone}
               measurementSystem={
                 isAmbulatoryWorkspace
@@ -988,6 +993,13 @@ export default function EncounterWorkspacePage() {
               canManageBilling(role) &&
               appointment.status === "in_exam" &&
               closeoutQuery.data?.closeout?.status !== "completed"
+            }
+            readOnlyMessage={
+              !canManageBilling(role)
+                ? "Charge capture is read-only for your role. An admin or front desk teammate can create the invoice."
+                : closeoutQuery.data?.closeout?.status === "completed"
+                  ? "This visit is closed out, so charges can't be added here. Open the invoice to make changes."
+                  : "Charges can be added once the exam has started."
             }
             activeInvoice={
               activeInvoices[0]
@@ -3737,6 +3749,7 @@ function ChargeCapture({
   clientId,
   patientId,
   canManage,
+  readOnlyMessage,
   activeInvoice,
   invoiceStateReady,
   invoiceStateLoading,
@@ -3746,6 +3759,8 @@ function ChargeCapture({
   clientId: string | null;
   patientId: string | null;
   canManage: boolean;
+  /** Why charge capture is read-only right now, shown instead of the form. */
+  readOnlyMessage: string;
   activeInvoice: { id: string; status: string } | null;
   invoiceStateReady: boolean;
   invoiceStateLoading: boolean;
@@ -4117,8 +4132,7 @@ function ChargeCapture({
       <CardContent>
         {!canManage ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            Charge capture is read-only for your role. An admin or front desk
-            teammate can create the invoice.
+            {readOnlyMessage}
           </div>
         ) : invoiceStateLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

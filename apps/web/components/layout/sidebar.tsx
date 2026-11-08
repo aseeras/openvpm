@@ -167,7 +167,7 @@ export function Sidebar({
     >
       {/* Logo */}
       <div className="flex h-14 items-center border-b border-border px-4">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/" className="flex min-w-0 items-center gap-2">
           {branding?.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -181,7 +181,12 @@ export function Sidebar({
             </div>
           )}
           {!isCollapsed && (
-            <span className="font-heading text-lg font-semibold">OpenVPM</span>
+            <span
+              className="truncate font-heading text-lg font-semibold"
+              title={branding?.name || "OpenVPM"}
+            >
+              {branding?.name || "OpenVPM"}
+            </span>
           )}
         </Link>
       </div>

@@ -277,9 +277,15 @@ export function TreatmentPlanComposer({
   const savedFingerprint = useRef("");
   const operation = useRef<{ fingerprint: string; id: string } | null>(null);
   const context = { appointmentId, clientId, patientId };
+  const availability = trpc.visitTreatmentPlans.availability.useQuery(
+    undefined,
+    { staleTime: Infinity, refetchOnWindowFocus: false },
+  );
+  const authoringEnabled = availability.data?.enabled === true;
   const planQuery = trpc.visitTreatmentPlans.getForAppointment.useQuery(
     context,
     {
+      enabled: authoringEnabled,
       retry: false,
       refetchOnWindowFocus: false,
     },
@@ -415,6 +421,7 @@ export function TreatmentPlanComposer({
     }
   };
 
+  if (!authoringEnabled) return null;
   if (planQuery.error?.data?.code === "NOT_FOUND") return null;
   if (planQuery.isLoading) return null;
 
