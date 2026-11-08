@@ -34,6 +34,11 @@ overrides:
   vite@7: 7.3.7
   zod@4: 4.6.7
 
+patchedDependencies:
+  next@15.5.28:
+    hash: srtgsgrtesln2c7xrgxxu57ulu
+    path: patches/next@15.5.28.patch
+
 importers:
 
   .:
@@ -135,7 +140,7 @@ importers:
         version: 11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3)
       '@trpc/next':
         specifier: ^11.0.0
-        version: 11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/react-query@11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.8)(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
+        version: 11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/react-query@11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.8)(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)
       '@trpc/react-query':
         specifier: ^11.0.0
         version: 11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.8)(typescript@5.9.3)
@@ -144,7 +149,7 @@ importers:
         version: 11.13.4(typescript@5.9.3)
       '@vercel/analytics':
         specifier: ^2.0.1
-        version: 2.0.1(next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+        version: 2.0.1(next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
       '@vercel/blob':
         specifier: 2.8.0
         version: 2.8.0
@@ -180,10 +185,10 @@ importers:
         version: 0.577.0(react@19.2.8)
       next:
         specifier: ^15.5.28
-        version: 15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       next-auth:
         specifier: ^4.24.15
-        version: 4.24.15(next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 4.24.15(next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       next-themes:
         specifier: ^0.4.0
         version: 0.4.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -5947,11 +5952,11 @@ snapshots:
       '@trpc/server': 11.13.4(typescript@5.9.3)
       typescript: 5.9.3
 
-  '@trpc/next@11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/react-query@11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.8)(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)':
+  '@trpc/next@11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/react-query@11.13.4(@tanstack/react-query@5.90.21(react@19.2.8))(@trpc/client@11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(react@19.2.8)(typescript@5.9.3))(@trpc/server@11.13.4(typescript@5.9.3))(next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3)':
     dependencies:
       '@trpc/client': 11.13.4(@trpc/server@11.13.4(typescript@5.9.3))(typescript@5.9.3)
       '@trpc/server': 11.13.4(typescript@5.9.3)
-      next: 15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      next: 15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       typescript: 5.9.3
@@ -6050,9 +6055,9 @@ snapshots:
 
   '@types/use-sync-external-store@0.0.6': {}
 
-  '@vercel/analytics@2.0.1(next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
+  '@vercel/analytics@2.0.1(next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
     optionalDependencies:
-      next: 15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      next: 15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
 
   '@vercel/blob@2.8.0':
@@ -7041,13 +7046,13 @@ snapshots:
 
   nanoid@3.3.18: {}
 
-  next-auth@4.24.15(next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  next-auth@4.24.15(next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       '@babel/runtime': 7.29.2
       '@panva/hkdf': 1.2.1
       cookie: 0.7.2
       jose: 4.15.9
-      next: 15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      next: 15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       oauth: 0.9.15
       openid-client: 5.7.1
       preact: 10.29.0
@@ -7061,7 +7066,7 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  next@15.5.28(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  next@15.5.28(patch_hash=srtgsgrtesln2c7xrgxxu57ulu)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@20.19.37)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       '@next/env': 15.5.28
       '@swc/helpers': 0.5.15
