@@ -71,6 +71,10 @@ import {
   takeAppointmentSchedulingLock,
 } from "@/lib/scheduling/location";
 import { normalizePortalBrandColor } from "@/lib/portal/branding";
+import {
+  PATIENT_SPECIES,
+  PATIENT_SPECIES_LABELS,
+} from "@/lib/patients/species";
 
 const portalBookingDateInput = clinicalDateInput("Booking date");
 const portalBookingTimeInput = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, {
@@ -126,6 +130,18 @@ const PORTAL_MESSAGE_IP_RATE_LIMIT = {
   message:
     "Too many portal messages. Please try again later or call the clinic.",
 };
+const PORTAL_PET_IP_RATE_LIMIT = {
+  limit: 20,
+  windowMs: 60 * 60 * 1000,
+  message: "Too many requests. Please try again later or call the clinic.",
+};
+const PORTAL_PET_TOKEN_RATE_LIMIT = {
+  limit: 10,
+  windowMs: 60 * 60 * 1000,
+  message: "Too many requests. Please try again later or call the clinic.",
+};
+/** Clients add their own first pets; larger households go through the clinic. */
+export const PORTAL_SELF_ADDED_PET_LIMIT = 10;
 const PORTAL_MESSAGE_TOKEN_RATE_LIMIT = {
   limit: 10,
   windowMs: 60 * 60 * 1000,
@@ -853,6 +869,99 @@ export const portalRouter = createRouter({
         success: true,
         message,
       };
+    }),
+
+  /**
+   * Lets a signed-in client put a pet on file themselves, so a new client can
+   * go straight on to request a first visit instead of waiting for the clinic
+   * to create the chart. Mirrors public booking, which also creates a patient
+   * from a name and species; the clinic is told in the inbox to review it.
+   */
+  addPet: portalProcedure
+    .input(
+      z.object({
+        token: portalTokenCompatibilityInput,
+        name: z.string().trim().min(1).max(128),
+        species: z.enum(PATIENT_SPECIES),
+        breed: z.string().trim().max(128).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertPortalIpRateLimit(ctx.ip, {
+        keyPrefix: "portal-pet",
+        ...PORTAL_PET_IP_RATE_LIMIT,
+      });
+      await assertPortalRateLimit({
+        key: portalRateLimitKey("portal-pet", ctx.portalSessionId),
+        ...PORTAL_PET_TOKEN_RATE_LIMIT,
+      });
+
+      const client = await getClientForPortalSession(ctx.db, ctx.portalClient);
+      await assertPortalWriteAccess(ctx.db, client.practiceId, "booking");
+
+      const existingPets: Array<{ id: string; name: string }> = await ctx.db
+        .select({ id: patients.id, name: patients.name })
+        .from(patients)
+        .where(
+          and(
+            eq(patients.clientId, client.id),
+            eq(patients.practiceId, client.practiceId),
+            eq(patients.status, "active"),
+            isNull(patients.deletedAt),
+          ),
+        );
+
+      // A second tap, or a pet the clinic already added, reuses that chart.
+      const sameName = existingPets.find(
+        (pet) => pet.name.trim().toLowerCase() === input.name.toLowerCase(),
+      );
+      if (sameName) {
+        return { success: true, patientId: sameName.id, created: false };
+      }
+      if (existingPets.length >= PORTAL_SELF_ADDED_PET_LIMIT) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Please message the clinic to add more pets to your account.",
+        });
+      }
+
+      const breed = input.breed ? input.breed : null;
+      const [pet] = await ctx.db
+        .insert(patients)
+        .values({
+          practiceId: client.practiceId,
+          clientId: client.id,
+          name: input.name,
+          species: input.species,
+          breed,
+        })
+        .returning({ id: patients.id, name: patients.name });
+      if (!pet) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Could not add your pet. Please try again or call the clinic.",
+        });
+      }
+
+      // Tell the front desk so the new chart gets a look before the visit.
+      await ctx.db.insert(communications).values({
+        practiceId: client.practiceId,
+        clientId: client.id,
+        channel: "portal",
+        direction: "inbound",
+        subject: `New pet added in the portal: ${pet.name}`,
+        content: [
+          `Pet: ${pet.name}`,
+          `Species: ${PATIENT_SPECIES_LABELS[input.species]}`,
+          ...(breed ? [`Breed: ${breed}`] : []),
+          `Added by ${client.firstName} ${client.lastName} in the client app. Please review the chart before the first visit.`,
+        ].join("\n"),
+        status: "pending",
+        assignedTo: latestAssignedToForClient(client.practiceId, client.id),
+      });
+
+      return { success: true, patientId: pet.id, created: true };
     }),
 
   markMessagesRead: portalProcedure

@@ -5,6 +5,8 @@ import {
   filterFutureOpenSlots,
   isPortalBookingReasonValid,
   isPortalBookingStartWithinBounds,
+  PORTAL_BOOKING_SERVICE_TOPICS,
+  portalBookingReasonForService,
   PORTAL_BOOKING_REASON_MAX_LENGTH,
   portalBookingTimeBounds,
   portalBookingWindow,
@@ -186,5 +188,42 @@ describe("buildRequestedSlot", () => {
     expect(
       filterFutureOpenSlots(slots, new Date("2026-07-01T10:00:00.000Z"))
     ).toEqual([slots[2]]);
+  });
+});
+
+describe("portalBookingReasonForService", () => {
+  it("starts the reason with the website topic the visitor tapped", () => {
+    expect(portalBookingReasonForService("electroacupuncture")).toBe(
+      "Interested in: Electroacupuncture. ",
+    );
+    expect(portalBookingReasonForService("telehealth")).toBe(
+      "Interested in: Telehealth recheck. ",
+    );
+  });
+
+  it("ignores missing, unknown and prototype-named topics", () => {
+    expect(portalBookingReasonForService(null)).toBe("");
+    expect(portalBookingReasonForService("")).toBe("");
+    expect(portalBookingReasonForService("surgery")).toBe("");
+    expect(portalBookingReasonForService("constructor")).toBe("");
+    expect(portalBookingReasonForService("__proto__")).toBe("");
+  });
+
+  it("covers every topic pill on the practice website", () => {
+    for (const slug of [
+      "senior-care",
+      "fear-free",
+      "chronic-pain",
+      "initial-exam",
+      "electroacupuncture",
+      "laser-therapy",
+      "rehab",
+      "telehealth",
+    ]) {
+      expect(PORTAL_BOOKING_SERVICE_TOPICS[slug]).toBeTruthy();
+      expect(
+        isPortalBookingReasonValid(portalBookingReasonForService(slug)),
+      ).toBe(true);
+    }
   });
 });

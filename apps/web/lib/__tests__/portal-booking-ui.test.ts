@@ -13,12 +13,23 @@ describe("portal booking UI", () => {
     expect(source).toContain("if (client.isLoading)");
     expect(source).toContain("if (client.error || !client.data)");
     expect(source).toContain('title="Unable to load booking form"');
-    expect(source).toContain('title="No pets on file yet"');
     expect(source).toContain("clientData.locations.length === 0");
     expect(source).toContain(
       "has not configured an active scheduling location",
     );
     expect(source).not.toContain("if (!client.data) return null");
+  });
+
+  it("lets a client with no pets on file add one instead of a dead end", () => {
+    expect(source).not.toContain('title="No pets on file yet"');
+    expect(source).toContain("pets.length === 0 ? (\n        <AddPetForm");
+    expect(source).toContain("My pet isn&apos;t listed");
+  });
+
+  it("starts the visit reason from the website topic in ?service=", () => {
+    expect(source).toContain('.get("service")');
+    expect(source).toContain("portalBookingReasonForService(service)");
+    expect(source).toContain("setReason((current) => current || opening)");
   });
 
   it("requests open slots using the selected appointment type duration", () => {
