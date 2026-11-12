@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { AlertCircle, CalendarX2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -12,14 +12,55 @@ import {
   preflightOnlineBookingAppointmentNote,
   type PrevisitIntake,
 } from "@/lib/booking/previsit-intake";
+import { type PatientSpecies } from "@/lib/patients/species";
 import {
-  PATIENT_SPECIES_OPTIONS,
-  type PatientSpecies,
-} from "@/lib/patients/species";
+  PUBLIC_BOOKING_SPECIES_GROUPS,
+  formatBookingDate,
+  formatBookingTime,
+} from "@/lib/booking/public-form";
 import { portalBookingReasonForService } from "@/lib/portal/booking";
 
 function dateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** "Call …" when the clinic lists a phone, else an email link, else plain text. */
+function ContactClinic({
+  phone,
+  email,
+}: {
+  phone: string | null | undefined;
+  email: string | null | undefined;
+}) {
+  if (phone) {
+    return (
+      <>
+        Call{" "}
+        <a
+          href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+          className="underline underline-offset-2 hover:text-gray-700"
+        >
+          {phone}
+        </a>
+        .
+      </>
+    );
+  }
+  if (email) {
+    return (
+      <>
+        Email{" "}
+        <a
+          href={`mailto:${email}`}
+          className="underline underline-offset-2 hover:text-gray-700"
+        >
+          {email}
+        </a>
+        .
+      </>
+    );
+  }
+  return <>Contact the clinic.</>;
 }
 
 export default function PublicBookingPage() {
@@ -193,22 +234,25 @@ export default function PublicBookingPage() {
             <div className="flex justify-between gap-4">
               <dt>Preferred time</dt>
               <dd className="font-medium text-gray-900">
-                {date} at {time}
+                {formatBookingDate(date)} at {formatBookingTime(time)}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt>Clinic</dt>
               <dd className="text-right font-medium text-gray-900">
-                {selectedLocation?.name ?? data.practice.name}
+                {data.locations.length > 1 && selectedLocation
+                  ? selectedLocation.name
+                  : data.practice.name}
               </dd>
             </div>
           </dl>
         </div>
         <p className="text-gray-500 text-sm mt-4">
           We sent the details to the clinic. Questions?{" "}
-          {data.practice.phone
-            ? `Call ${data.practice.phone}.`
-            : "Contact the clinic."}
+          <ContactClinic
+            phone={data.practice.phone}
+            email={data.practice.email}
+          />
         </p>
       </div>
     );
@@ -299,7 +343,9 @@ export default function PublicBookingPage() {
               </p>
             ) : null}
           </div>
-        ) : data.locations[0] ? (
+        ) : data.locations[0]?.address ? (
+          // A single location only adds something when it has an address;
+          // its name alone ("Main Location") just repeats the clinic.
           <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
             <span className="font-medium text-gray-800">
               {data.locations[0].name}
@@ -410,7 +456,7 @@ export default function PublicBookingPage() {
                               : undefined
                           }
                         >
-                          {s.time}
+                          {formatBookingTime(s.time)}
                         </span>
                       </label>
                     );
@@ -541,11 +587,20 @@ export default function PublicBookingPage() {
                 onChange={(e) => setSpecies(e.target.value as PatientSpecies)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               >
-                {PATIENT_SPECIES_OPTIONS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
+                {PUBLIC_BOOKING_SPECIES_GROUPS.map((group, index) => {
+                  const options = group.options.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ));
+                  return group.label ? (
+                    <optgroup key={group.label} label={group.label}>
+                      {options}
+                    </optgroup>
+                  ) : (
+                    <Fragment key={`group-${index}`}>{options}</Fragment>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -599,10 +654,11 @@ export default function PublicBookingPage() {
               : "Request appointment"}
         </button>
         <p className="text-center text-xs text-gray-400">
-          Prefer to talk to a person?
-          {data.practice.phone
-            ? ` Call ${data.practice.phone}.`
-            : " Contact the clinic."}
+          Prefer to talk to a person?{" "}
+          <ContactClinic
+            phone={data.practice.phone}
+            email={data.practice.email}
+          />
         </p>
       </form>
     </div>
