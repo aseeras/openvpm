@@ -90,6 +90,12 @@ describe("request-only booking UI", () => {
     }
   });
 
+  it("starts the public visit reason from the website topic in ?service=", () => {
+    expect(publicPage).toContain('.get("service")');
+    expect(publicPage).toContain("portalBookingReasonForService(service)");
+    expect(publicPage).toContain("setReason((current) => current || opening)");
+  });
+
   it("shows an explicit unconfirmed request receipt", () => {
     expect(publicPage).toContain("Requested — not yet confirmed");
     expect(portalPage).toContain("Requested — not yet confirmed");
