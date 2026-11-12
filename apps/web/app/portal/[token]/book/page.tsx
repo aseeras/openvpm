@@ -2,16 +2,18 @@
 
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, PawPrint } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { EmptyState } from "@/components/common/empty-state";
 import {
   isPortalBookingReasonValid,
   isPortalBookingStartWithinBounds,
+  portalBookingReasonForService,
   PORTAL_BOOKING_REASON_MAX_LENGTH,
   portalBookingTimeBounds,
 } from "@/lib/portal/booking";
 import { formatPortalDateInput } from "@/lib/portal/date";
+import { AddPetForm } from "@/components/portal/add-pet-form";
 
 export default function BookAppointmentPage() {
   const formId = useId();
@@ -33,6 +35,15 @@ export default function BookAppointmentPage() {
   const [preferredDate, setPreferredDate] = useState("");
   const [preferredTime, setPreferredTime] = useState("");
   const [reason, setReason] = useState("");
+  const [addingPet, setAddingPet] = useState(false);
+
+  // A visitor who tapped a topic on the practice website arrives with
+  // ?service=<slug>; start the visit reason for them so they only add details.
+  useEffect(() => {
+    const service = new URLSearchParams(window.location.search).get("service");
+    const opening = portalBookingReasonForService(service);
+    if (opening) setReason((current) => current || opening);
+  }, []);
 
   const appointmentTypesMissing =
     !types.isLoading && !types.error && !types.data;
@@ -248,11 +259,14 @@ export default function BookAppointmentPage() {
       </p>
 
       {pets.length === 0 ? (
-        <EmptyState
-          className="py-10"
-          icon={PawPrint}
-          title="No pets on file yet"
-          description="Your clinic will add pets here when they create patient records."
+        <AddPetForm onAdded={(id) => setPatientId(id)} />
+      ) : addingPet ? (
+        <AddPetForm
+          onAdded={(id) => {
+            setPatientId(id);
+            setAddingPet(false);
+          }}
+          onCancel={() => setAddingPet(false)}
         />
       ) : (
         <form onSubmit={submit} className="space-y-5">
@@ -321,6 +335,13 @@ export default function BookAppointmentPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setAddingPet(true)}
+              className="mt-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              My pet isn&apos;t listed
+            </button>
           </div>
 
           <div>
