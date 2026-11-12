@@ -29,7 +29,7 @@ describe("pre-visit intake fields", () => {
       "symptoms",
       "serviceAddress",
     ]);
-    expect(markup.indexOf("Service or farm address")).toBeLessThan(
+    expect(markup.indexOf("Visit address")).toBeLessThan(
       markup.indexOf("Current signs or symptoms"),
     );
     expect(markup.indexOf("Current signs or symptoms")).toBeLessThan(

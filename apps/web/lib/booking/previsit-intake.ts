@@ -11,8 +11,9 @@ export const PREVISIT_INTAKE_FIELD_MAX_LENGTH = 500;
 export const PREVISIT_INTAKE_FIELD_DEFINITIONS = [
   {
     key: "serviceAddress",
-    label: "Service or farm address",
-    placeholder: "Street address, farm name, gate, unit, or arrival directions",
+    label: "Visit address",
+    placeholder:
+      "Street address and unit, gate code, or farm name and arrival directions",
   },
   {
     key: "symptoms",
