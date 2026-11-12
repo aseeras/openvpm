@@ -16,6 +16,7 @@ import {
   PATIENT_SPECIES_OPTIONS,
   type PatientSpecies,
 } from "@/lib/patients/species";
+import { portalBookingReasonForService } from "@/lib/portal/booking";
 
 function dateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -54,6 +55,14 @@ export default function PublicBookingPage() {
   const [intake, setIntake] = useState<PrevisitIntake>({});
   // Honeypot: hidden from humans, filled by bots.
   const [website, setWebsite] = useState("");
+
+  // A visitor who tapped a topic on the practice website arrives with
+  // ?service=<slug>; start the visit reason for them so they only add details.
+  useEffect(() => {
+    const service = new URLSearchParams(window.location.search).get("service");
+    const opening = portalBookingReasonForService(service);
+    if (opening) setReason((current) => current || opening);
+  }, []);
 
   const slots = trpc.booking.availableSlots.useQuery(
     { slug, date, typeId, locationId: locationId || undefined },
