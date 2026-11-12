@@ -170,3 +170,33 @@ export function buildRequestedSlot(input: SlotInput): Slot {
 
   return { startTime, endTime };
 }
+
+/**
+ * Topics a visitor can tap on the practice website before landing on the
+ * booking form (`/portal/book?service=<slug>`), with the words used to start
+ * the visit reason for them. Unknown slugs are ignored.
+ */
+export const PORTAL_BOOKING_SERVICE_TOPICS: Readonly<Record<string, string>> = {
+  "senior-care": "Senior pet care",
+  "fear-free": "Fear-free care for an anxious pet",
+  "chronic-pain": "Chronic pain",
+  "initial-exam": "Initial exam and first acupuncture session",
+  electroacupuncture: "Electroacupuncture",
+  "laser-therapy": "Cold laser therapy",
+  rehab: "CCRT-guided rehab",
+  telehealth: "Telehealth recheck",
+};
+
+/** The opening words of the visit reason for a website topic, or "". */
+export function portalBookingReasonForService(
+  service: string | null | undefined,
+): string {
+  if (!service) return "";
+  const topic = Object.prototype.hasOwnProperty.call(
+    PORTAL_BOOKING_SERVICE_TOPICS,
+    service,
+  )
+    ? PORTAL_BOOKING_SERVICE_TOPICS[service]
+    : undefined;
+  return topic ? `Interested in: ${topic}. ` : "";
+}
