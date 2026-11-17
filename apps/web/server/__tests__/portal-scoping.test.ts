@@ -287,7 +287,9 @@ describe("portal public read scoping", () => {
     expect(weightsBlock).toContain(
       "eq(patients.practiceId, client.practiceId)",
     );
-    expect(weightsBlock).toContain('eq(patients.status, "active")');
+    expect(weightsBlock).toContain(
+      "inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES)",
+    );
     expect(weightsBlock).toContain("isNull(patients.deletedAt)");
 
     const allergiesBlock = src.match(
@@ -302,7 +304,9 @@ describe("portal public read scoping", () => {
     expect(allergiesBlock).toContain(
       "eq(patients.practiceId, client.practiceId)",
     );
-    expect(allergiesBlock).toContain('eq(patients.status, "active")');
+    expect(allergiesBlock).toContain(
+      "inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES)",
+    );
     expect(allergiesBlock).toContain("isNull(patients.deletedAt)");
     expect(allergiesBlock).toContain("not exists (");
     expect(allergiesBlock).toContain(
@@ -321,7 +325,9 @@ describe("portal public read scoping", () => {
     expect(vaccinationsBlock).toContain(
       "eq(patients.practiceId, client.practiceId)",
     );
-    expect(vaccinationsBlock).toContain('eq(patients.status, "active")');
+    expect(vaccinationsBlock).toContain(
+      "inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES)",
+    );
     expect(vaccinationsBlock).toContain("isNull(patients.deletedAt)");
 
     const prescriptionsBlock = src.match(
@@ -336,7 +342,9 @@ describe("portal public read scoping", () => {
     expect(prescriptionsBlock).toContain(
       "eq(patients.practiceId, client.practiceId)",
     );
-    expect(prescriptionsBlock).toContain('eq(patients.status, "active")');
+    expect(prescriptionsBlock).toContain(
+      "inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES)",
+    );
     expect(prescriptionsBlock).toContain("isNull(patients.deletedAt)");
   });
 
@@ -345,8 +353,17 @@ describe("portal public read scoping", () => {
       /eq\(patients\.practiceId, client\.practiceId\)/g,
     );
     expect(patientPracticeFilters?.length).toBeGreaterThanOrEqual(3);
-    const activePatientFilters = src.match(/eq\(patients\.status, "active"\)/g);
-    expect(activePatientFilters?.length).toBeGreaterThanOrEqual(3);
+    const statusFilters = src.match(
+      /eq\(patients\.status, "active"\)|inArray\(patients\.status, PORTAL_RECORD_PATIENT_STATUSES\)/g,
+    );
+    expect(statusFilters?.length).toBeGreaterThanOrEqual(3);
+    // Records stay readable for inactive pets; deceased pets stay out, and
+    // new requests (booking, adding a pet) still need an active pet.
+    expect(src).toMatch(
+      /PORTAL_RECORD_PATIENT_STATUSES: \("active" \| "inactive"\)\[\] = \[\s*"active",\s*"inactive",\s*\]/,
+    );
+    const requestBlock = src.slice(src.indexOf("requestAppointment: portalProcedure"));
+    expect(requestBlock).toContain('eq(patients.status, "active")');
   });
 
   it("keeps portal doctor history tenant scoped after staff deactivation", () => {

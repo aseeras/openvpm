@@ -908,7 +908,7 @@ describe("portal booking input validation", () => {
         clientId: CLIENT_ID,
         channel: "portal",
         content: expect.stringContaining(
-          "Requested: 2026-07-01 09:00 (America/Los_Angeles)"
+          "Requested: Wed, Jul 1, 2026, 9:00 AM"
         ),
       })
     );

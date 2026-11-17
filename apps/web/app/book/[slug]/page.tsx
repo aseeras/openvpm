@@ -18,7 +18,7 @@ import {
   formatBookingDate,
   formatBookingTime,
 } from "@/lib/booking/public-form";
-import { portalBookingReasonForService } from "@/lib/portal/booking";
+import { portalBookingReasonForService, portalBookingTypeForService } from "@/lib/portal/booking";
 
 function dateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -104,6 +104,16 @@ export default function PublicBookingPage() {
     const opening = portalBookingReasonForService(service);
     if (opening) setReason((current) => current || opening);
   }, []);
+
+  // The same topic can also name the visit type (for example "Initial exam");
+  // pick it once the offered types load, unless the visitor already chose.
+  const pageTypes = page.data?.types;
+  useEffect(() => {
+    if (!pageTypes) return;
+    const service = new URLSearchParams(window.location.search).get("service");
+    const matched = portalBookingTypeForService(service, pageTypes);
+    if (matched) setTypeId((current) => current || matched);
+  }, [pageTypes]);
 
   const slots = trpc.booking.availableSlots.useQuery(
     { slug, date, typeId, locationId: locationId || undefined },

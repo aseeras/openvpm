@@ -581,7 +581,13 @@ describe("public booking", () => {
     expect(appointment.notes).toContain(
       "Client-reported pre-visit history (unverified)",
     );
-    expect(communication.content).toContain(String(appointment.notes));
+    // The inbox message is also the owner's own copy in portal Messages:
+    // it carries their full request, without the staff-only note tag.
+    expect(communication.content).toContain(
+      String(appointment.notes).replace(/^\[Online request\] /, ""),
+    );
+    expect(communication.content).not.toContain("[Online request]");
+    expect(communication.content).not.toContain("Client:");
     // Public intake is request context. It does not mutate the permanent
     // address or other demographics of an existing client.
     expect(updateSet).not.toHaveBeenCalled();
