@@ -104,7 +104,7 @@ describe("request-only booking UI", () => {
   });
 
   it("blocks over-cap visit details and explains how to fix them", () => {
-    expect(publicPage).toContain("PATIENT_SPECIES_OPTIONS.map");
+    expect(publicPage).toContain("PUBLIC_BOOKING_SPECIES_GROUPS.map");
     expect(publicPage).toContain("<PrevisitIntakeFields");
     expect(publicPage).toContain("preflightOnlineBookingAppointmentNote");
     expect(publicPage).toContain("appointmentNotePreflight.ok");
