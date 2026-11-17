@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Activity, AlertCircle, Download, Pill, Shield } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  ClipboardList,
+  Download,
+  Pill,
+  Shield,
+} from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { EmptyState } from "@/components/common/empty-state";
 import { PATIENT_SPECIES_EMOJI } from "@/lib/patients/species";
@@ -22,7 +29,7 @@ function formatDate(
   return formatPortalDate(d, undefined, timeZone);
 }
 
-type Tab = "vaccinations" | "prescriptions" | "weights";
+type Tab = "visits" | "vaccinations" | "prescriptions" | "weights";
 
 type PortalVaccinationForCertificate = {
   id: string;
@@ -44,7 +51,7 @@ function certificateFilename(patientName: string, vaccineName: string): string {
 export default function PetDetailPage() {
   const params = useParams();
   const petId = params.petId as string;
-  const [activeTab, setActiveTab] = useState<Tab>("vaccinations");
+  const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [certificatePendingId, setCertificatePendingId] = useState<
     string | null
   >(null);
@@ -149,7 +156,11 @@ export default function PetDetailPage() {
     }
   }
 
+  const shownTab: Tab =
+    activeTab ?? (data.visitSummaries.length > 0 ? "visits" : "vaccinations");
+
   const tabs: { key: Tab; label: string; count: number }[] = [
+    { key: "visits", label: "Visit summaries", count: data.visitSummaries.length },
     { key: "vaccinations", label: "Vaccinations", count: data.vaccinations.length },
     { key: "prescriptions", label: "Prescriptions", count: data.prescriptions.length },
     { key: "weights", label: "Weight History", count: data.weights.length },
@@ -237,13 +248,13 @@ export default function PetDetailPage() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
-        <nav className="flex gap-6">
+        <nav className="flex gap-6 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.key
+              className={`shrink-0 whitespace-nowrap pb-3 text-sm font-medium border-b-2 transition-colors ${
+                shownTab === tab.key
                   ? "border-primary text-primary"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
@@ -259,8 +270,110 @@ export default function PetDetailPage() {
         </nav>
       </div>
 
+      {/* Visit Summaries Tab */}
+      {shownTab === "visits" && (
+        <div>
+          {data.visitSummaries.length === 0 ? (
+            <EmptyState
+              className="py-10"
+              icon={ClipboardList}
+              title="No visit summaries yet"
+              description="After a visit, your veterinarian's home-care instructions appear here."
+            />
+          ) : (
+            <div className="space-y-4">
+              {data.visitSummaries.map((visit) => (
+                <article
+                  key={visit.appointmentId}
+                  className="rounded-lg border border-gray-200 p-4"
+                >
+                  <header className="mb-3">
+                    <h3 className="font-semibold text-gray-900">
+                      {visit.visitType || "Visit"}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {[
+                        formatDate(visit.visitStart, practiceTimeZone),
+                        visit.veterinarianName
+                          ? `with ${visit.veterinarianName}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </header>
+                  <dl className="space-y-3 text-sm">
+                    {visit.diagnosisSummary && (
+                      <div>
+                        <dt className="font-medium text-gray-900">Visit summary</dt>
+                        <dd className="whitespace-pre-line text-gray-700">
+                          {visit.diagnosisSummary}
+                        </dd>
+                      </div>
+                    )}
+                    {visit.dischargeInstructions && (
+                      <div>
+                        <dt className="font-medium text-gray-900">Home care</dt>
+                        <dd className="whitespace-pre-line text-gray-700">
+                          {visit.dischargeInstructions}
+                        </dd>
+                      </div>
+                    )}
+                    {visit.medications.length > 0 && (
+                      <div>
+                        <dt className="font-medium text-gray-900">Medications</dt>
+                        <dd>
+                          <ul className="space-y-1 text-gray-700">
+                            {visit.medications.map((medication, index) => (
+                              <li key={`${medication.medicationName}-${index}`}>
+                                <span className="font-medium">
+                                  {medication.medicationName}
+                                </span>{" "}
+                                {[medication.dosage, medication.frequency]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                                {medication.instructions
+                                  ? `. ${medication.instructions}`
+                                  : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        </dd>
+                      </div>
+                    )}
+                    {visit.warningSigns && (
+                      <div className="rounded-lg bg-amber-50 p-3">
+                        <dt className="font-medium text-amber-900">
+                          When to call us
+                        </dt>
+                        <dd className="whitespace-pre-line text-amber-800">
+                          {visit.warningSigns}
+                        </dd>
+                      </div>
+                    )}
+                    {visit.followUpDisposition === "needed" && (
+                      <div>
+                        <dt className="font-medium text-gray-900">Follow-up</dt>
+                        <dd className="text-gray-700">
+                          {visit.followUpDueDate
+                            ? `Please book a follow-up by ${formatDate(
+                                visit.followUpDueDate,
+                                practiceTimeZone
+                              )}.`
+                            : "Please book a follow-up visit."}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Vaccinations Tab */}
-      {activeTab === "vaccinations" && (
+      {shownTab === "vaccinations" && (
         <div>
           {certificateError ? (
             <p
@@ -329,7 +442,7 @@ export default function PetDetailPage() {
       )}
 
       {/* Prescriptions Tab */}
-      {activeTab === "prescriptions" && (
+      {shownTab === "prescriptions" && (
         <div>
           {data.prescriptions.length === 0 ? (
             <EmptyState
@@ -381,7 +494,7 @@ export default function PetDetailPage() {
       )}
 
       {/* Weight History Tab */}
-      {activeTab === "weights" && (
+      {shownTab === "weights" && (
         <div>
           {data.weights.length === 0 ? (
             <EmptyState
