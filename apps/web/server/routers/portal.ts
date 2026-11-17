@@ -61,6 +61,7 @@ import {
 } from "@/lib/billing/invoice-payment-tokens";
 import { COMMUNICATION_CONTENT_MAX_LENGTH } from "@/lib/communications/policy";
 import { checkInIsOpen, checkInPath } from "@/lib/check-in/link";
+import { appointmentRequestMessage } from "@/lib/booking/request-message";
 import { latestAssignedToForClient } from "@/lib/communications/assignment";
 import { queueInboxAlert } from "@/lib/communications/inbox-alert";
 import { stripeConfigured } from "@/lib/stripe-config";
@@ -305,14 +306,6 @@ function formatPortalSlotTime(date: Date, timeZone?: string | null): string {
   ).padStart(2, "0")}`;
 }
 
-function formatPortalRequestDateTime(
-  date: string,
-  time: string,
-  timeZone?: string | null,
-): string {
-  return timeZone ? `${date} ${time} (${timeZone})` : `${date} ${time}`;
-}
-
 async function assertPortalWriteAccess(
   db: any,
   practiceId: string,
@@ -348,6 +341,18 @@ async function assertPortalWriteAccess(
   }
 }
 
+
+/**
+ * Pets whose records an owner can read in the portal. A pet the clinic marks
+ * inactive (moved away, no longer seen) keeps its history visible to the
+ * owner; booking, video visits and refills stay limited to active pets.
+ * Deceased pets stay out of the portal.
+ */
+const PORTAL_RECORD_PATIENT_STATUSES: ("active" | "inactive")[] = [
+  "active",
+  "inactive",
+];
+
 export const portalRouter = createRouter({
   getClient: portalProcedure
     .input(z.object({ token: portalTokenCompatibilityInput }))
@@ -380,7 +385,7 @@ export const portalRouter = createRouter({
                 eq(patients.clientId, client.id),
                 eq(patients.practiceId, client.practiceId),
                 isNull(patients.deletedAt),
-                eq(patients.status, "active"),
+                inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
               ),
             ),
         ]);
@@ -437,7 +442,7 @@ export const portalRouter = createRouter({
             eq(patients.id, input.patientId),
             eq(patients.clientId, client.id),
             eq(patients.practiceId, client.practiceId),
-            eq(patients.status, "active"),
+            inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
             isNull(patients.deletedAt),
           ),
         )
@@ -472,7 +477,7 @@ export const portalRouter = createRouter({
               eq(patients.id, input.patientId),
               eq(patients.clientId, client.id),
               eq(patients.practiceId, client.practiceId),
-              eq(patients.status, "active"),
+              inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
               isNull(patients.deletedAt),
             ),
           )
@@ -571,7 +576,7 @@ export const portalRouter = createRouter({
               eq(patients.id, input.patientId),
               eq(patients.clientId, client.id),
               eq(patients.practiceId, client.practiceId),
-              eq(patients.status, "active"),
+              inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
               isNull(patients.deletedAt),
             ),
           )
@@ -605,7 +610,7 @@ export const portalRouter = createRouter({
               eq(patients.id, input.patientId),
               eq(patients.clientId, client.id),
               eq(patients.practiceId, client.practiceId),
-              eq(patients.status, "active"),
+              inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
               isNull(patients.deletedAt),
             ),
           )
@@ -644,7 +649,7 @@ export const portalRouter = createRouter({
               eq(patients.id, input.patientId),
               eq(patients.clientId, client.id),
               eq(patients.practiceId, client.practiceId),
-              eq(patients.status, "active"),
+              inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
               isNull(patients.deletedAt),
             ),
           )
@@ -731,7 +736,7 @@ export const portalRouter = createRouter({
               eq(vaccinationRecords.patientId, patients.id),
               eq(patients.practiceId, client.practiceId),
               eq(patients.clientId, client.id),
-              eq(patients.status, "active"),
+              inArray(patients.status, PORTAL_RECORD_PATIENT_STATUSES),
               isNull(patients.deletedAt),
             ),
           )
@@ -1637,16 +1642,14 @@ export const portalRouter = createRouter({
 
       // Mirror into the communications inbox so front desk sees it there too.
       const requestSubject = `Appointment request for ${patient.name}`;
-      const requestContent = [
-          `Pet: ${patient.name}`,
-          `Requested: ${formatPortalRequestDateTime(
-            input.preferredDate,
-            input.preferredTime,
-            timezone,
-          )}`,
-          `Location: ${selectedLocation.name}`,
-          `Reason: ${input.reason}`,
-        ].join("\n");
+      const requestContent = appointmentRequestMessage({
+        petName: patient.name,
+        date: input.preferredDate,
+        time: input.preferredTime,
+        locationName: selectedLocation.name,
+        locationCount: activeLocations.length,
+        reason: input.reason,
+      });
       await ctx.db.insert(communications).values({
         practiceId: client.practiceId,
         clientId: client.id,

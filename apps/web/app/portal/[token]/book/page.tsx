@@ -147,7 +147,8 @@ export default function BookAppointmentPage() {
     (location) => location.id === locationId,
   );
   const today = formatPortalDateInput(new Date(), clientData.timezone);
-  const pets = clientData.patients;
+  // Only active pets can be booked; inactive pets stay in the records view.
+  const pets = clientData.patients.filter((pet) => pet.status === "active");
   const selectedPet = pets.find((pet) => pet.id === patientId);
   const canSubmit = Boolean(
     patientId &&

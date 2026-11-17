@@ -77,8 +77,16 @@ export default function PortalHomePage() {
   const nextVisit = (appointments.data ?? [])
     .filter((a) => UPCOMING_STATUSES.has(a.status) && new Date(a.startTime).getTime() > now - 60 * 60 * 1000)
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())[0];
+  // Home shows the pets the clinic currently sees; inactive pets' records
+  // are still under Pets.
+  const activePets = data.patients.filter((pet) => pet.status === "active");
   const accepting = video.data?.configured && video.data.accepting;
   const inWaitingRoom = video.data?.visit;
+  // Video visits are for pets the clinic has already seen in person. Until a
+  // pet is established, point the owner to a house call instead of offering
+  // a video visit the next screen would turn down.
+  const needsFirstVisit =
+    !inWaitingRoom && video.data != null && !video.data.pets.some((pet) => pet.established);
 
   return (
     <div className="space-y-5">
@@ -117,7 +125,7 @@ export default function PortalHomePage() {
               alt=""
               className="h-[52px] w-[52px] rounded-full border-2 border-white bg-white object-cover"
             />
-            {accepting ? (
+            {accepting && !needsFirstVisit ? (
               <span
                 className="absolute bottom-0.5 right-0 h-3.5 w-3.5 rounded-full border-2"
                 style={{ backgroundColor: "#2FB36B", borderColor: ZP.accent }}
@@ -131,23 +139,38 @@ export default function PortalHomePage() {
                 ? inWaitingRoom.status === "in_call"
                   ? "Your visit is in progress"
                   : "You're in the waiting room"
-                : accepting
-                  ? "Available now"
-                  : "Not available right now"}
+                : needsFirstVisit
+                  ? "After your first in-person visit"
+                  : accepting
+                    ? "Available now"
+                    : "Not available right now"}
             </p>
           </div>
         </div>
         <p className="text-sm leading-relaxed text-[#EAF5FE]">
-          Quick rechecks, medication questions and acupuncture follow-ups from
-          your couch. For established {data.practice.name} patients.
+          {needsFirstVisit
+            ? nextVisit
+              ? "Video rechecks open up after the veterinarian has seen your pet at your upcoming house call."
+              : "Video rechecks open up once the veterinarian has seen your pet at home. Book a house call to get started."
+            : `Quick rechecks, medication questions and acupuncture follow-ups from your couch. For established ${data.practice.name} patients.`}
         </p>
         <Link
-          href="/portal/video"
+          href={needsFirstVisit ? (nextVisit ? "/portal/appointments" : "/portal/book") : "/portal/video"}
           className="flex h-[50px] items-center justify-center gap-2 rounded-full font-extrabold"
           style={{ backgroundColor: ZP.sun, color: ZP.ink }}
         >
-          <Video className="h-5 w-5" aria-hidden="true" />
-          {inWaitingRoom ? "Return to your visit" : "Start a video visit"}
+          {needsFirstVisit ? (
+            <HomeIcon className="h-5 w-5" aria-hidden="true" />
+          ) : (
+            <Video className="h-5 w-5" aria-hidden="true" />
+          )}
+          {inWaitingRoom
+            ? "Return to your visit"
+            : needsFirstVisit
+              ? nextVisit
+                ? "See your upcoming visit"
+                : "Book a house call"
+              : "Start a video visit"}
         </Link>
       </section>
 
@@ -181,13 +204,13 @@ export default function PortalHomePage() {
             Add a pet
           </Link>
         </div>
-        {data.patients.length === 0 ? (
+        {activePets.length === 0 ? (
           <p className="rounded-[18px] border bg-white p-4 text-sm" style={{ borderColor: ZP.border, color: ZP.muted }}>
             Your pets will appear here once the clinic adds them.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
-            {data.patients.map((pet) => (
+            {activePets.map((pet) => (
               <Link
                 key={pet.id}
                 href={`/portal/pets/${pet.id}`}
