@@ -200,3 +200,31 @@ export function portalBookingReasonForService(
     : undefined;
   return topic ? `Interested in: ${topic}. ` : "";
 }
+
+/**
+ * Website topics that name one kind of visit, with the words that visit type
+ * is called on the request form. Topics that only describe a concern
+ * (chronic pain, an anxious pet...) leave the visit type for the owner.
+ */
+const PORTAL_BOOKING_SERVICE_TYPE_PATTERNS: Readonly<Record<string, RegExp>> = {
+  "initial-exam": /\binitial\b|\bfirst visit\b|\bnew patient\b/i,
+  rehab: /\brehab/i,
+  telehealth: /\btele(health|medicine)\b|\bvideo\b/i,
+};
+
+/**
+ * The visit type to pre-pick for a website topic: the one offered type whose
+ * name matches it, or null when none or several match (the owner chooses).
+ */
+export function portalBookingTypeForService<T extends { id: string; name: string }>(
+  service: string | null | undefined,
+  types: readonly T[],
+): T["id"] | null {
+  if (!service) return null;
+  if (!Object.prototype.hasOwnProperty.call(PORTAL_BOOKING_SERVICE_TYPE_PATTERNS, service)) {
+    return null;
+  }
+  const pattern = PORTAL_BOOKING_SERVICE_TYPE_PATTERNS[service]!;
+  const matches = types.filter((type) => pattern.test(type.name));
+  return matches.length === 1 ? matches[0]!.id : null;
+}

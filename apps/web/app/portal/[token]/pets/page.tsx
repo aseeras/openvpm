@@ -36,7 +36,17 @@ export default function PortalPetsPage() {
               >
                 <PetAvatar name={pet.name} photoUrl={pet.photoUrl} size={56} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-lg font-extrabold">{pet.name}</span>
+                  <span className="block text-lg font-extrabold">
+                    {pet.name}
+                    {pet.status !== "active" ? (
+                      <span
+                        className="ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-bold"
+                        style={{ backgroundColor: ZP.chip, color: ZP.muted }}
+                      >
+                        Past patient
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="block text-sm font-semibold" style={{ color: ZP.muted }}>
                     {[pet.breed, pet.dob ? calculatePortalAge(pet.dob) : null].filter(Boolean).join(" · ")}
                   </span>

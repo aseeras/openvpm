@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { eq, and, isNull, sql, not, inArray, lt, gt, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { appointmentRequestMessage } from "@/lib/booking/request-message";
 import {
   createRouter,
   publicProcedure,
@@ -773,13 +774,22 @@ export const bookingRouter = createRouter({
       // Surface the request in the communications inbox so the front desk
       // sees it alongside portal requests and messages.
       const requestSubject = `New appointment request for ${petName}`;
-      const requestContent = [
-        `Client: ${input.contact.firstName} ${input.contact.lastName}${isNewClient ? " (new client)" : ""}`,
-        `Pet: ${petName}`,
-        `Requested: ${input.date} ${input.time}`,
-        `Location: ${selectedLocation.name}`,
-        `Details: ${appointmentNote}`,
-      ].join("\n");
+      // This message also shows in the owner's portal Messages, so it is
+      // worded for them; who the client is (and whether they're new) goes
+      // only to the staff alert below.
+      const activeLocations = await listActiveAppointmentLocations(
+        ctx.db,
+        practice.id,
+      );
+      const requestContent = appointmentRequestMessage({
+        petName,
+        date: input.date,
+        time: input.time,
+        locationName: selectedLocation.name,
+        locationCount: activeLocations.length,
+        reason: appointmentNote,
+      });
+      const staffClientLine = `Client: ${input.contact.firstName} ${input.contact.lastName}${isNewClient ? " (new client)" : ""}`;
       await ctx.db.insert(communications).values({
         practiceId: practice.id,
         clientId,
@@ -792,7 +802,7 @@ export const bookingRouter = createRouter({
       });
       await queueInboxAlert(ctx, practice.id, {
         subject: requestSubject,
-        content: requestContent,
+        content: `${staffClientLine}\n${requestContent}`,
       });
 
       await dispatchAppointmentWebhookAfterCommit(

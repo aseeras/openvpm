@@ -7,6 +7,7 @@ import {
   isPortalBookingStartWithinBounds,
   PORTAL_BOOKING_SERVICE_TOPICS,
   portalBookingReasonForService,
+  portalBookingTypeForService,
   PORTAL_BOOKING_REASON_MAX_LENGTH,
   portalBookingTimeBounds,
   portalBookingWindow,
@@ -225,5 +226,35 @@ describe("portalBookingReasonForService", () => {
         isPortalBookingReasonValid(portalBookingReasonForService(slug)),
       ).toBe(true);
     }
+  });
+});
+
+describe("portalBookingTypeForService", () => {
+  const types = [
+    { id: "follow", name: "Follow-up acupuncture" },
+    { id: "herbal", name: "Herbal / food-therapy consult" },
+    { id: "initial", name: "Initial exam & first acupuncture" },
+    { id: "rehab", name: "Rehab & therapeutic exercise" },
+    { id: "tele", name: "Telehealth recheck" },
+  ];
+
+  it("pre-picks the one visit type a website topic names", () => {
+    expect(portalBookingTypeForService("initial-exam", types)).toBe("initial");
+    expect(portalBookingTypeForService("rehab", types)).toBe("rehab");
+    expect(portalBookingTypeForService("telehealth", types)).toBe("tele");
+  });
+
+  it("leaves the choice to the owner for concerns, unknown topics and ties", () => {
+    expect(portalBookingTypeForService("chronic-pain", types)).toBeNull();
+    expect(portalBookingTypeForService("electroacupuncture", types)).toBeNull();
+    expect(portalBookingTypeForService(null, types)).toBeNull();
+    expect(portalBookingTypeForService("__proto__", types)).toBeNull();
+    expect(
+      portalBookingTypeForService("rehab", [
+        ...types,
+        { id: "rehab2", name: "Rehab recheck" },
+      ]),
+    ).toBeNull();
+    expect(portalBookingTypeForService("initial-exam", [])).toBeNull();
   });
 });
