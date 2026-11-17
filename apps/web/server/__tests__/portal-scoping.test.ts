@@ -171,13 +171,50 @@ describe("portal public read scoping", () => {
       "clientName: `${client.firstName} ${client.lastName}`",
     );
     expect(src).toContain("timezone: practice.timezone");
-    expect(src).toContain("practice,\n        weights,");
+    expect(src).toContain("practice,\n        weights: [...recordedWeights");
     expect(src).toContain("isNull(patientWeights.deletedAt)");
     expect(src).toContain("isNull(patientAllergies.deletedAt)");
     expect(src).toContain("isNull(vaccinationRecords.deletedAt)");
     expect(src).toContain("isNull(prescriptions.deletedAt)");
     expect(src).toContain("lotNumber: vaccinationRecords.lotNumber");
     expect(src).toContain("manufacturer: vaccinationRecords.manufacturer");
+  });
+
+  it("adds visit-vitals weights and finalized visit summaries to pet detail", () => {
+    const petDetail = src.slice(
+      src.indexOf("  getPetDetail: portalProcedure"),
+      src.indexOf("  getVaccinationCertificateData: portalProcedure"),
+    );
+    // Vitals weights: same patient and practice, not deleted, not corrected.
+    expect(petDetail).toContain("eq(vitalSigns.patientId, patient.id)");
+    expect(petDetail).toContain("eq(vitalSigns.practiceId, client.practiceId)");
+    expect(petDetail).toContain("isNull(vitalSigns.deletedAt)");
+    expect(petDetail).toContain("vital_correction.vital_sign_id");
+
+    // Visit summaries: only this client's visits for this pet, and only
+    // owner handoffs the clinic has finalized.
+    const summaries = petDetail.slice(
+      petDetail.indexOf(".from(visitCloseouts)"),
+      petDetail.indexOf(".limit(50)"),
+    );
+    expect(summaries).toContain("eq(appointments.patientId, patient.id)");
+    expect(summaries).toContain("eq(appointments.clientId, client.id)");
+    expect(summaries).toContain("eq(visitCloseouts.practiceId, client.practiceId)");
+    expect(summaries).toContain("isNull(visitCloseouts.deletedAt)");
+    expect(summaries).toContain('"clinical_finalized"');
+    expect(summaries).not.toContain('"draft"');
+
+    // Owner-facing fields only: never SOAP notes, internal follow-up notes,
+    // staff assignment or amendment drafts.
+    const projection = petDetail.slice(
+      petDetail.indexOf("appointmentId: visitCloseouts.appointmentId"),
+      petDetail.indexOf(".from(visitCloseouts)"),
+    );
+    expect(projection).not.toContain("followUpNotes");
+    expect(projection).not.toContain("followUpAssign");
+    expect(projection).not.toContain("amendmentDraft");
+    expect(projection).not.toContain("noChargeReason");
+    expect(petDetail).not.toContain("soapNotes");
   });
 
   it("projects only client-facing patient fields from pet detail", () => {

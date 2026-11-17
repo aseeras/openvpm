@@ -18,6 +18,8 @@ import {
   locations,
   clinicalRecordCorrections,
   appointmentCheckIns,
+  vitalSigns,
+  visitCloseouts,
 } from "@openpims/db";
 import { users } from "@openpims/db";
 import { rateLimit } from "@/lib/rate-limit";
@@ -63,7 +65,7 @@ import { latestAssignedToForClient } from "@/lib/communications/assignment";
 import { queueInboxAlert } from "@/lib/communications/inbox-alert";
 import { stripeConfigured } from "@/lib/stripe-config";
 import { not, inArray, lt, gt } from "drizzle-orm";
-import { gte, or } from "drizzle-orm";
+import { gte, or, isNotNull } from "drizzle-orm";
 import { formatDateInputForTimeZone } from "@/lib/date-input";
 import {
   listActiveAppointmentLocations,
@@ -448,7 +450,14 @@ export const portalRouter = createRouter({
         });
       }
 
-      const [weights, allergies, vaccinations, activeRx] = await Promise.all([
+      const [
+        recordedWeights,
+        vitalWeights,
+        visitSummaries,
+        allergies,
+        vaccinations,
+        activeRx,
+      ] = await Promise.all([
         ctx.db
           .select({
             id: patientWeights.id,
@@ -474,6 +483,78 @@ export const portalRouter = createRouter({
             ),
           )
           .orderBy(desc(patientWeights.recordedAt)),
+
+        // Weights taken with visit vitals count as weight history too, the
+        // same way the staff chart shows them. Vitals marked entered-in-error
+        // are left out.
+        ctx.db
+          .select({
+            id: vitalSigns.id,
+            weightKg: vitalSigns.weightKg,
+            recordedAt: vitalSigns.recordedAt,
+          })
+          .from(vitalSigns)
+          .where(
+            and(
+              eq(vitalSigns.patientId, patient.id),
+              eq(vitalSigns.practiceId, client.practiceId),
+              isNull(vitalSigns.deletedAt),
+              isNotNull(vitalSigns.weightKg),
+              sql`not exists (
+                select 1
+                from ${clinicalRecordCorrections} as vital_correction
+                where vital_correction.practice_id = ${client.practiceId}
+                  and vital_correction.vital_sign_id = ${vitalSigns.id}
+              )`,
+            ),
+          )
+          .orderBy(desc(vitalSigns.recordedAt)),
+
+        // Finalized owner handoffs (discharge instructions). Only the
+        // owner-facing fields the clinic signed for the owner are returned;
+        // SOAP notes and internal notes never reach the portal.
+        ctx.db
+          .select({
+            appointmentId: visitCloseouts.appointmentId,
+            visitStart: appointments.startTime,
+            visitType: appointmentTypes.name,
+            veterinarianName: visitCloseouts.clinicalFinalizerName,
+            finalizedAt: visitCloseouts.clinicalFinalizedAt,
+            diagnosisSummary: visitCloseouts.diagnosisSummary,
+            dischargeInstructions: visitCloseouts.dischargeInstructions,
+            warningSigns: visitCloseouts.warningSigns,
+            medications: visitCloseouts.medicationSnapshot,
+            followUpDisposition: visitCloseouts.followUpDisposition,
+            followUpDueDate: visitCloseouts.followUpDueDate,
+          })
+          .from(visitCloseouts)
+          .innerJoin(
+            appointments,
+            and(
+              eq(appointments.id, visitCloseouts.appointmentId),
+              eq(appointments.patientId, patient.id),
+              eq(appointments.clientId, client.id),
+              eq(appointments.practiceId, client.practiceId),
+              isNull(appointments.deletedAt),
+            ),
+          )
+          .leftJoin(
+            appointmentTypes,
+            eq(appointmentTypes.id, appointments.typeId),
+          )
+          .where(
+            and(
+              eq(visitCloseouts.practiceId, client.practiceId),
+              isNull(visitCloseouts.deletedAt),
+              inArray(visitCloseouts.status, [
+                "clinical_finalized",
+                "completed",
+              ]),
+              isNotNull(visitCloseouts.clinicalFinalizedAt),
+            ),
+          )
+          .orderBy(desc(appointments.startTime))
+          .limit(50),
 
         ctx.db
           .select({
@@ -586,7 +667,24 @@ export const portalRouter = createRouter({
         clientName: `${client.firstName} ${client.lastName}`,
         timezone: practice.timezone,
         practice,
-        weights,
+        weights: [...recordedWeights, ...vitalWeights.flatMap((weight) =>
+          weight.weightKg === null
+            ? []
+            : [{ ...weight, weightKg: weight.weightKg }],
+        )].sort(
+          (a, b) =>
+            b.recordedAt.getTime() - a.recordedAt.getTime() ||
+            a.id.localeCompare(b.id),
+        ),
+        visitSummaries: visitSummaries.map((summary) => ({
+          ...summary,
+          medications: summary.medications.map((medication) => ({
+            medicationName: medication.medicationName,
+            dosage: medication.dosage,
+            frequency: medication.frequency,
+            instructions: medication.instructions,
+          })),
+        })),
         allergies,
         vaccinations,
         prescriptions: activeRx,
