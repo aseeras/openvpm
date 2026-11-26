@@ -105,6 +105,11 @@ import {
   ambulatoryWorkspaceRolloutEnabled,
   effectiveAmbulatoryWorkspaceSettings,
 } from "@/server/ambulatory-rollout";
+import {
+  normalizeStaffVideos,
+  staffVideosFromSettings,
+  staffVideosInput,
+} from "@/lib/staff-videos";
 
 const adminProcedure = protectedProcedure.use(requireRole("admin"));
 
@@ -925,6 +930,33 @@ export const settingsRouter = createRouter({
         .returning({ settings: practices.settings });
       if (!updated) throw practiceNotFound();
       return effectiveAmbulatoryWorkspaceSettings(updated.settings);
+    }),
+
+  // Team videos (walkthroughs, training, demos): admin-only, never public.
+  listStaffVideos: adminProcedure.query(async ({ ctx }) => {
+    const [practice] = await ctx.db
+      .select({ settings: practices.settings })
+      .from(practices)
+      .where(activePracticeWhere(ctx.practiceId))
+      .limit(1);
+    if (!practice) throw practiceNotFound();
+    return staffVideosFromSettings(practice.settings);
+  }),
+
+  updateStaffVideos: adminProcedure
+    .input(z.object({ videos: staffVideosInput }).strict())
+    .mutation(async ({ ctx, input }) => {
+      const [updated] = await ctx.db
+        .update(practices)
+        .set({
+          settings: settingsMergePatch({
+            staffVideos: normalizeStaffVideos(input.videos),
+          }),
+        })
+        .where(activePracticeWhere(ctx.practiceId))
+        .returning({ settings: practices.settings });
+      if (!updated) throw practiceNotFound();
+      return staffVideosFromSettings(updated.settings);
     }),
 
   setMarketingEmailPreference: adminProcedure

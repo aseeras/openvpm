@@ -34,6 +34,7 @@ import {
   HeartPulse,
   Compass,
   ReceiptText,
+  Video,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { AccentColorPicker } from "@/components/brand/accent-color-picker";
 import { MessagingTab } from "@/components/settings/messaging-tab";
 import { BookingTab } from "@/components/settings/booking-tab";
+import { VideosTab } from "@/components/settings/videos-tab";
 import { ProviderHours } from "@/components/settings/provider-hours";
 import { MigrationHelpRequest } from "@/components/onboarding/migration-help-request";
 import { ServicesTab } from "@/components/settings/services-tab";
@@ -154,6 +156,7 @@ type Tab =
   | "wellness"
   | "messaging"
   | "booking"
+  | "videos"
   | "billing";
 
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -168,6 +171,7 @@ const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "wellness", label: "Wellness Plans", icon: HeartPulse },
   { id: "messaging", label: "Messaging", icon: MessageSquare },
   { id: "booking", label: "Online Booking", icon: Globe },
+  { id: "videos", label: "Videos", icon: Video },
   { id: "billing", label: "Plan & Billing", icon: CreditCard },
 ];
 
@@ -418,6 +422,7 @@ function SettingsPageInner() {
           {activeTab === "wellness" && <WellnessPlansTab />}
           {activeTab === "messaging" && <MessagingTab />}
           {activeTab === "booking" && <BookingTab />}
+          {activeTab === "videos" && <VideosTab />}
           {activeTab === "billing" && <BillingTab />}
         </div>
       </div>

@@ -36,6 +36,8 @@ const contentSecurityPolicy = [
   "form-action 'self'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
+  // Team videos in Settings > Videos play from the practice's own website.
+  "media-src 'self' blob: https:",
   "style-src 'self' 'unsafe-inline'",
   [
     "script-src 'self' 'unsafe-inline'",
